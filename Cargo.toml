@@ -1,0 +1,23 @@
+[package]
+name = "cafe-rs"
+version = "0.1.0"
+authors = ["29th-Day"]
+edition = "2024"
+license = "GPL-3.0-or-later"
+keywords = ["wiiu", "homebrew"]
+
+[lib]
+test = false
+bench = false
+
+[features]
+default = []
+rt = ["dep:cafe-rt"]
+panic = ["cafe-rt?/panic"]
+alloc = []
+
+[dependencies]
+bitflags = "2.10.0"
+cafe-rt = { path = "../cafe-rt", version = "*", optional = true }
+cafe-sys = { path = "../cafe-sys", version = "*", features = ["coreinit", "nsysnet", "nn_ac", "proc_ui", "gx2"] }
+log = "0.4.29"
