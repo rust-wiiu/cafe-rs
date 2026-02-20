@@ -1,17 +1,14 @@
 use crate::prelude::*;
 
-use super::buffer::FrameBuffer;
-use cafe_sys::gx2;
+use cafe::graphics::buffer::{
+    AntiAliasing, ColorBuffer, DepthBuffer, Dimension, Format, FrameBuffer, ResourceFlags, Surface,
+};
 use std::{cell::UnsafeCell, ffi::c_void, ptr};
 use sys::{
-    gx2::{
-        display::{
-            AspectRatio, Buffering, DrcMode, ScanMode, ScanTarget, TvMode, aspect_ratio,
-            drc_framebuffer_size, drc_mode, scan_mode, tv_framebuffer_size,
-        },
-        surface::{
-            AntiAliasing, ColorBuffer, DepthBuffer, Dimension, Format, ResourceFlags, Surface,
-        },
+    gx2,
+    gx2::display::{
+        AspectRatio, Buffering, DrcMode, ScanMode, TvMode, aspect_ratio, drc_framebuffer_size,
+        drc_mode, scan_mode, tv_framebuffer_size,
     },
     proc_ui,
 };

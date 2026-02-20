@@ -2,7 +2,7 @@
 
 #![no_std]
 
-#[cfg(feature = "alloc")]
+// always require alloc crate. alloc feature is for default GlobalAllocator.
 extern crate alloc as alloc_crate;
 
 #[cfg(feature = "rt")]
@@ -26,6 +26,16 @@ pub mod rrc;
 pub mod sync;
 pub mod thread;
 pub mod time;
+
+/// What to do when an allocation fails?
+///
+/// Use this for now to unify OOM behavior.
+macro_rules! OOM {
+    () => {
+        panic!("Out of memory!");
+    };
+}
+pub(crate) use OOM;
 
 // ==== ONLY DURING DEV STAGES ====
 

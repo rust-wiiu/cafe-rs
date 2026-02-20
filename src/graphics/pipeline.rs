@@ -34,13 +34,15 @@ impl Context<TV> {
             gx2::state::set_colorbuffer(
                 TV::color_buffer()
                     .as_mut()
-                    .expect("graphics::init must be called beforehands"),
+                    .expect("graphics::init must be called beforehands")
+                    .as_ref(),
                 gx2::state::RenderTarget::T0,
             );
             gx2::state::set_depthbuffer(
                 TV::depth_buffer()
                     .as_mut()
-                    .expect("graphics::init must be called beforehands"),
+                    .expect("graphics::init must be called beforehands")
+                    .as_ref(),
             );
             gx2::state::set_viewport(0.0, 0.0, width as f32, height as f32, 0.0, 1.0);
             gx2::state::set_scissor(0, 0, width as u32, height as u32);
@@ -70,7 +72,8 @@ impl Context<TV> {
             gx2::display::copy_color_to_scan_buffer(
                 TV::color_buffer()
                     .as_mut()
-                    .expect("graphics::init must be called beforehands"),
+                    .expect("graphics::init must be called beforehands")
+                    .as_ref(),
                 gx2::display::ScanTarget::Tv,
             );
         }
@@ -92,13 +95,15 @@ impl Context<DRC> {
             gx2::state::set_colorbuffer(
                 DRC::color_buffer()
                     .as_mut()
-                    .expect("graphics::init must be called beforehands"),
+                    .expect("graphics::init must be called beforehands")
+                    .as_ref(),
                 gx2::state::RenderTarget::T0,
             );
             gx2::state::set_depthbuffer(
                 DRC::depth_buffer()
                     .as_mut()
-                    .expect("graphics::init must be called beforehands"),
+                    .expect("graphics::init must be called beforehands")
+                    .as_ref(),
             );
             gx2::state::set_viewport(0.0, 0.0, width as f32, height as f32, 0.0, 1.0);
             gx2::state::set_scissor(0, 0, width as u32, height as u32);
@@ -128,7 +133,8 @@ impl Context<DRC> {
             gx2::display::copy_color_to_scan_buffer(
                 DRC::color_buffer()
                     .as_mut()
-                    .expect("graphics::init must be called beforehands"),
+                    .expect("graphics::init must be called beforehands")
+                    .as_ref(),
                 gx2::display::ScanTarget::Drc,
             );
         }

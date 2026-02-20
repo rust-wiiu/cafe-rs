@@ -24,7 +24,7 @@ rpx! {
             let now = cafe_rs::datetime::DateTime::now();
             log::info!("{}", now);
 
-            socket.sendto(b"HELLO FROM WIIU\n", &address, None).unwrap();
+            socket.send_to(b"HELLO FROM WIIU\n", &address, None).unwrap();
 
             std::thread::sleep(std::time::Duration::from_secs(1));
         }

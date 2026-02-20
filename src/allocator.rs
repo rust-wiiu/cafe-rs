@@ -2,15 +2,17 @@
 //!
 //! Note: Because the `log` crate uses format! (which needs allocations) no logs can be made here
 
-use crate::{std::alloc, sys};
+use crate::prelude::*;
+use std::alloc::{GlobalAlloc, Layout};
+use sys::coreinit::mem;
 
 struct Allocator;
-unsafe impl alloc::GlobalAlloc for Allocator {
-    unsafe fn alloc(&self, layout: alloc::Layout) -> *mut u8 {
+unsafe impl GlobalAlloc for Allocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let size = layout.size();
         let align = layout.align().max(4);
 
-        match unsafe { sys::coreinit::mem::AllocFromDefaultHeapEx } {
+        match unsafe { mem::AllocFromDefaultHeapEx } {
             None => panic!("memory pools were not initialized"),
             Some(malloc) => {
                 let ptr = unsafe { malloc(size as u32, align as i32) };
@@ -24,8 +26,8 @@ unsafe impl alloc::GlobalAlloc for Allocator {
         }
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, _layout: alloc::Layout) {
-        match unsafe { sys::coreinit::mem::FreeToDefaultHeap } {
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+        match unsafe { mem::FreeToDefaultHeap } {
             None => (),
             Some(free) => unsafe { free(ptr.cast()) },
         }

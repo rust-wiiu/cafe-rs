@@ -1,14 +1,32 @@
-use crate::std::time::Duration;
-use crate::sys::coreinit;
+use crate::prelude::*;
+
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use std::time::{Duration, SystemTime};
+use sys::coreinit;
 
 pub fn sleep(dur: Duration) {
-    // the max duration is over 500 years, so this should be fine
-    let nsec = (dur.as_nanos().min(u64::MAX as u128)) as u64;
-    let timer_clock = unsafe { (*coreinit::system::system_info()).bus_clock_speed } / 4;
-
-    let ticks = (nsec * (timer_clock as u64) / 31250) / 32000;
-
+    let time: SystemTime = dur.into();
     unsafe {
-        coreinit::thread::sleep(ticks);
+        coreinit::thread::sleep(time.into());
+    }
+}
+
+#[repr(u32)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, IntoPrimitive, TryFromPrimitive,
+)]
+pub enum Core {
+    C0 = 0,
+    C1 = 1,
+    C2 = 2,
+}
+
+/// Gets the CPU core executing the current thread.
+pub fn core() -> Core {
+    match unsafe { coreinit::system::core_id() } {
+        0 => Core::C0,
+        1 => Core::C1,
+        2 => Core::C2,
+        _ => unreachable!(),
     }
 }

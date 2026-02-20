@@ -1,11 +1,13 @@
 //! Datetime
 
-use crate::std::{fmt, time::SystemTime};
-use crate::sys::coreinit::time;
+use crate::prelude::*;
+
+use std::{fmt, time::SystemTime};
+use sys::coreinit;
 
 /// DateTime
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DateTime(time::DateTime);
+pub struct DateTime(coreinit::time::DateTime);
 
 impl DateTime {
     pub fn now() -> Self {
@@ -64,11 +66,28 @@ impl DateTime {
     }
 }
 
+impl PartialOrd for DateTime {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(
+            self.0
+                .year
+                .cmp(&other.0.year)
+                .then_with(|| self.0.mon.cmp(&other.0.mon))
+                .then_with(|| self.0.mday.cmp(&other.0.mday))
+                .then_with(|| self.0.hour.cmp(&other.0.hour))
+                .then_with(|| self.0.min.cmp(&other.0.min))
+                .then_with(|| self.0.sec.cmp(&other.0.sec))
+                .then_with(|| self.0.msec.cmp(&other.0.msec))
+                .then_with(|| self.0.usec.cmp(&other.0.usec)),
+        )
+    }
+}
+
 impl From<SystemTime> for DateTime {
     fn from(value: SystemTime) -> Self {
-        let mut dt = time::DateTime::default();
+        let mut dt = coreinit::time::DateTime::default();
         unsafe {
-            time::time_to_datetime(value.0, &mut dt);
+            coreinit::time::time_to_datetime(value.0, &mut dt);
         }
         Self(dt)
     }

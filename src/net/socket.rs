@@ -1,9 +1,14 @@
 //! socket
 
-use crate::rrc::{Resource, Rrc};
-use crate::std::{mem::size_of_val, net::SocketAddrV4};
-use crate::sys::nsysnet::socket;
+use crate::prelude::*;
+
 use crate::{Error, Result};
+use cafe::rrc::{Resource, Rrc};
+use std::{
+    mem::size_of_val,
+    net::{SocketAddr, SocketAddrV4},
+};
+use sys::nsysnet::socket;
 
 static SOCKET: Rrc = Rrc::new(
     || unsafe {
@@ -57,7 +62,7 @@ impl Socket {
         }
     }
 
-    pub fn sendto(
+    pub fn send_to(
         &self,
         data: &[u8],
         to: &SocketAddrV4,
@@ -93,5 +98,39 @@ impl Drop for Socket {
             socket::shutdown(self.fd, socket::Shutdown::ReadWrite);
             socket::close(self.fd);
         }
+    }
+}
+
+pub trait ToSocketAddrs {
+    type Iter: Iterator<Item = SocketAddrV4>;
+
+    fn to_socket_addrs(&self) -> Result<Self::Iter>;
+}
+
+impl ToSocketAddrs for ([u8; 4], u16) {
+    type Iter = std::iter::Once<SocketAddrV4>;
+
+    fn to_socket_addrs(&self) -> Result<Self::Iter> {
+        let addr = SocketAddrV4::new(self.0.into(), self.1);
+        Ok(std::iter::once(addr))
+    }
+}
+
+impl ToSocketAddrs for SocketAddr {
+    type Iter = std::iter::Once<SocketAddrV4>;
+
+    fn to_socket_addrs(&self) -> Result<Self::Iter> {
+        match self {
+            SocketAddr::V4(addr) => Ok(std::iter::once(*addr)),
+            SocketAddr::V6(_) => Err(Error::Any("IPv6 addresses are not supported")),
+        }
+    }
+}
+
+impl ToSocketAddrs for SocketAddrV4 {
+    type Iter = std::iter::Once<SocketAddrV4>;
+
+    fn to_socket_addrs(&self) -> Result<Self::Iter> {
+        Ok(std::iter::once(*self))
     }
 }

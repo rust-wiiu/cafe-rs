@@ -31,6 +31,7 @@ pub use alloc_crate::string;
 pub use alloc_crate::vec;
 
 pub mod ffi {
+
     pub use alloc_crate::ffi::c_str::*;
     pub use core::ffi::*;
 }
@@ -52,6 +53,7 @@ pub mod fmt {
 }
 
 pub mod net {
+    pub use crate::net::socket::ToSocketAddrs;
     pub use core::net::*;
 }
 

@@ -18,6 +18,8 @@ alloc = []
 
 [dependencies]
 bitflags = "2.10.0"
+bon = { version = "3.8.2", default-features = false }
 cafe-rt = { path = "../cafe-rt", version = "*", optional = true }
-cafe-sys = { path = "../cafe-sys", version = "*", features = ["coreinit", "nsysnet", "nn_ac", "proc_ui", "gx2"] }
+cafe-sys = { path = "../cafe-sys", version = "*", features = ["coreinit", "nsysnet", "nn_ac", "proc_ui", "gx2", "sysapp"] }
 log = "0.4.29"
+num_enum = { version = "0.7.5", default-features = false }
