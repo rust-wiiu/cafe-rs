@@ -3,7 +3,7 @@ name = "cafe-rs"
 version = "0.1.0"
 authors = ["29th-Day"]
 edition = "2024"
-license = "GPL-3.0-or-later"
+license-file = "LICENSE"
 keywords = ["wiiu", "homebrew"]
 
 [lib]
