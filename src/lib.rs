@@ -10,8 +10,6 @@ pub use cafe_rt as rt;
 
 pub use cafe_sys as sys;
 
-#[cfg(feature = "alloc")]
-pub mod allocator;
 pub mod prelude;
 pub mod std;
 
