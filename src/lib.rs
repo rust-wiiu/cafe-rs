@@ -14,8 +14,8 @@ pub mod prelude;
 pub mod std;
 
 pub mod alloc;
-pub mod controller;
 pub mod datetime;
+pub mod gamepad;
 pub mod graphics;
 pub mod mem;
 pub mod net;

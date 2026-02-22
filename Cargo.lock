@@ -70,6 +70,7 @@ dependencies = [
  "cafe-sys",
  "log",
  "num_enum",
+ "thiserror",
 ]
 
 [[package]]
