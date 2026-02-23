@@ -1,4 +1,16 @@
-//! Controller
+//! Gamepad
+//!
+//! # Example
+//!
+//! ```rust
+//! let mut gamepads = cafe::gamepads::Gamepads::default();
+//!
+//! gamepads.poll();
+//!
+//! for (port, input) in &gamepads {
+//!     log::info!("{:?} - {:?}", port, input);
+//! }
+//! ```
 
 use crate::prelude::*;
 
@@ -6,18 +18,15 @@ use crate::rrc::{Resource, Rrc};
 use bitflags::bitflags;
 
 static PADS: Rrc = Rrc::new(
-    || {
+    || unsafe {
         // sys::vpad::init();
-        // sys::kpad::init();
+        sys::padscore::kpad::init();
     },
-    || {
+    || unsafe {
         // sys::vpad::deinit();
-        // sys::kpad::deinit();
+        sys::padscore::kpad::deinit();
     },
 );
-
-// KPAD
-// VPAD
 
 bitflags! {
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -56,55 +65,154 @@ bitflags! {
     }
 }
 
+macro_rules! map_bitfields {
+    ($val:expr, $src_ty:ty, $dst_ty:ty, [$($field:ident),* $(,)?]) => {{
+        let mut s = <$dst_ty>::empty();
+        $(
+            if $val.contains(<$src_ty>::$field) {
+                s |= <$dst_ty>::$field;
+            }
+        )*
+        s
+    }};
+}
+
 impl From<sys::vpad::Button> for Button {
     fn from(value: sys::vpad::Button) -> Self {
-        let mut s = Self::empty();
-
-        macro_rules! convert {
-            ($($btn:ident),*) => {
-                $(
-                    if value.contains(sys::vpad::Button::$btn) {
-                        s |= Button::$btn;
-                    }
-                )*
-            };
-        }
-
-        convert!(
-            A,
-            B,
-            X,
-            Y,
-            Left,
-            Right,
-            Up,
-            Down,
-            ZL,
-            ZR,
-            L,
-            R,
-            Plus,
-            Minus,
-            Home,
-            Sync,
-            R3,
-            L3,
-            TV,
-            RStickLeft,
-            RStickRight,
-            RStickUp,
-            RStickDown,
-            LStickLeft,
-            LStickRight,
-            LStickUp,
-            LStickDown
-        );
-
-        s
+        map_bitfields!(
+            value,
+            sys::vpad::Button,
+            Self,
+            [
+                A,
+                B,
+                X,
+                Y,
+                Left,
+                Right,
+                Up,
+                Down,
+                ZL,
+                ZR,
+                L,
+                R,
+                Plus,
+                Minus,
+                Home,
+                Sync,
+                R3,
+                L3,
+                TV,
+                RStickLeft,
+                RStickRight,
+                RStickUp,
+                RStickDown,
+                LStickLeft,
+                LStickRight,
+                LStickUp,
+                LStickDown
+            ]
+        )
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+impl From<sys::padscore::wpad::Button> for Button {
+    fn from(value: sys::padscore::wpad::Button) -> Self {
+        map_bitfields!(
+            value,
+            sys::padscore::wpad::Button,
+            Self,
+            [
+                Left, Right, Down, Up, Plus, Two, One, B, A, Minus, Z, C, Home
+            ]
+        )
+    }
+}
+
+impl From<sys::padscore::wpad::NunchukButton> for Button {
+    fn from(value: sys::padscore::wpad::NunchukButton) -> Self {
+        map_bitfields!(
+            value,
+            sys::padscore::wpad::NunchukButton,
+            Self,
+            [LStickLeft, LStickRight, LStickDown, LStickUp, Z, C]
+        )
+    }
+}
+
+impl From<sys::padscore::wpad::ClassicButton> for Button {
+    fn from(value: sys::padscore::wpad::ClassicButton) -> Self {
+        map_bitfields!(
+            value,
+            sys::padscore::wpad::ClassicButton,
+            Self,
+            [
+                Up,
+                Left,
+                ZR,
+                X,
+                A,
+                Y,
+                B,
+                ZL,
+                R,
+                Plus,
+                Home,
+                Minus,
+                L,
+                Down,
+                Right,
+                LStickLeft,
+                LStickRight,
+                LStickDown,
+                LStickUp,
+                RStickLeft,
+                RStickRight,
+                RStickDown,
+                RStickUp
+            ]
+        )
+    }
+}
+
+impl From<sys::padscore::wpad::URCCButton> for Button {
+    fn from(value: sys::padscore::wpad::URCCButton) -> Self {
+        map_bitfields!(
+            value,
+            sys::padscore::wpad::URCCButton,
+            Self,
+            [
+                Up,
+                Left,
+                ZR,
+                X,
+                A,
+                Y,
+                B,
+                ZL,
+                R,
+                Plus,
+                Home,
+                Minus,
+                L,
+                Down,
+                Right,
+                R3,
+                L3,
+                LStickUp,
+                LStickDown,
+                LStickLeft,
+                LStickRight,
+                RStickUp,
+                RStickDown,
+                RStickLeft,
+                RStickRight
+            ]
+        )
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Joystick {
     pub x: f32,
     pub y: f32,
@@ -119,24 +227,37 @@ impl From<sys::vpad::Vec2> for Joystick {
     }
 }
 
+impl From<sys::padscore::kpad::Vec2> for Joystick {
+    fn from(value: sys::padscore::kpad::Vec2) -> Self {
+        Self {
+            x: value.x,
+            y: value.y,
+        }
+    }
+}
+
 pub struct GamepadsConfig<P, G, T>(core::marker::PhantomData<(P, G, T)>);
 
 impl<P, G, T> GamepadsConfig<P, G, T> {
+    const fn new() -> Self {
+        Self(core::marker::PhantomData)
+    }
+
     /// Wiimotes are enabled by default.
     pub fn wiimote(self, enabled: bool) -> Self {
-        log::info!("wiimote: {enabled}");
+        unsafe { sys::padscore::wpad::enable_wiimote(enabled) }
         self
     }
 
     /// URCC (Wii U Pro Controller) are disabled by default.
     pub fn urcc(self, enabled: bool) -> Self {
-        log::info!("urcc: {enabled}");
+        unsafe { sys::padscore::wpad::enable_urcc(enabled) }
         self
     }
 
     /// WBC (Wii U Balance Board) is disabled by default.
     pub fn wbc(self, enabled: bool) -> Self {
-        log::info!("wbc: {enabled}");
+        unsafe { sys::padscore::wpad::enable_wbc(enabled) }
         self
     }
 
@@ -150,7 +271,7 @@ impl<P, G, T> GamepadsConfig<P, G, T> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Port {
     P0,
     P1,
@@ -162,37 +283,37 @@ pub enum Port {
     DRC,
 }
 
-pub trait Pointer: Debug + Clone {
+pub trait Pointer: Debug + Clone + PartialEq {
     fn from_vpad(status: &sys::vpad::Status) -> Self;
-    fn from_kpad(status: ()) -> Self;
+    fn from_kpad(status: &sys::padscore::kpad::Status) -> Self;
 }
 
-pub trait Gyro: Debug + Clone {
+pub trait Gyro: Debug + Clone + PartialEq {
     fn from_vpad(status: &sys::vpad::Status) -> Self;
-    fn from_kpad(status: ()) -> Self;
+    fn from_kpad(status: &sys::padscore::kpad::Status) -> Self;
 }
 
-pub trait Touch: Debug + Clone {
+pub trait Touch: Debug + Clone + PartialEq {
     fn from_vpad(status: &sys::vpad::Status) -> Self;
-    fn from_kpad(status: ()) -> Self;
+    fn from_kpad(status: &sys::padscore::kpad::Status) -> Self;
 }
 
 impl Pointer for () {
     fn from_vpad(_status: &sys::vpad::Status) -> Self {}
-    fn from_kpad(_status: ()) -> Self {}
+    fn from_kpad(_status: &sys::padscore::kpad::Status) -> Self {}
 }
 
 impl Gyro for () {
     fn from_vpad(_status: &sys::vpad::Status) -> Self {}
-    fn from_kpad(_status: ()) -> Self {}
+    fn from_kpad(_status: &sys::padscore::kpad::Status) -> Self {}
 }
 
 impl Touch for () {
     fn from_vpad(_status: &sys::vpad::Status) -> Self {}
-    fn from_kpad(_status: ()) -> Self {}
+    fn from_kpad(_status: &sys::padscore::kpad::Status) -> Self {}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Input<Pointer = (), Gyro = (), Touch = ()> {
     Wiimote {
         hold: Button,
@@ -299,6 +420,46 @@ impl<P, G, T> Input<P, G, T> {
             _ => None,
         }
     }
+
+    pub const fn is_wiimote(&self) -> bool {
+        matches!(self, Self::Wiimote { .. })
+    }
+
+    pub const fn is_nunchuk(&self) -> bool {
+        matches!(self, Self::Nunchuk { .. })
+    }
+
+    pub const fn is_wiimote_plus(&self) -> bool {
+        matches!(self, Self::WiimotePlus { .. })
+    }
+
+    pub const fn is_nunchuk_plus(&self) -> bool {
+        matches!(self, Self::NunchukPlus { .. })
+    }
+
+    pub const fn is_classic(&self) -> bool {
+        matches!(self, Self::Classic { .. })
+    }
+
+    pub const fn is_urcc(&self) -> bool {
+        matches!(self, Self::UURC { .. })
+    }
+
+    pub const fn is_drc(&self) -> bool {
+        matches!(self, Self::DRC { .. })
+    }
+
+    pub const fn is_held(&self, button: Button) -> bool {
+        self.hold().contains(button)
+    }
+
+    pub const fn is_triggered(&self, button: Button) -> bool {
+        self.trigger().contains(button)
+    }
+
+    pub const fn is_released(&self, button: Button) -> bool {
+        self.release().contains(button)
+    }
 }
 
 impl<P: Pointer, G: Gyro, T: Touch> From<sys::vpad::Status> for Input<P, G, T> {
@@ -307,13 +468,84 @@ impl<P: Pointer, G: Gyro, T: Touch> From<sys::vpad::Status> for Input<P, G, T> {
         let touch = T::from_vpad(&value);
 
         Input::DRC {
-            hold: Button::from(value.hold),
-            trigger: Button::from(value.trigger),
-            release: Button::from(value.release),
-            left_stick: Joystick::from(value.left_stick),
-            right_stick: Joystick::from(value.right_stick),
+            hold: value.hold.into(),
+            trigger: value.trigger.into(),
+            release: value.release.into(),
+            left_stick: value.left_stick.into(),
+            right_stick: value.right_stick.into(),
             gyro,
             touch,
+        }
+    }
+}
+
+impl<P: Pointer, G: Gyro, T: Touch> From<sys::padscore::kpad::Status> for Input<P, G, T> {
+    fn from(value: sys::padscore::kpad::Status) -> Self {
+        let pointer = P::from_kpad(&value);
+        let gyro = G::from_kpad(&value);
+
+        use sys::padscore::kpad::ExtensionType as Ext;
+
+        match value.extension_type {
+            Ext::Core => Input::Wiimote {
+                hold: value.hold.into(),
+                trigger: value.trigger.into(),
+                release: value.trigger.into(),
+                pointer,
+            },
+            Ext::Nunchuk => Input::Nunchuk {
+                hold: Button::from(value.hold) | unsafe { value.extension.nunchuk }.hold.into(),
+                trigger: Button::from(value.trigger)
+                    | unsafe { value.extension.nunchuk }.trigger.into(),
+                release: Button::from(value.release)
+                    | unsafe { value.extension.nunchuk }.release.into(),
+                stick: unsafe { value.extension.nunchuk }.stick.into(),
+                pointer,
+            },
+            Ext::MotionPlus => Input::WiimotePlus {
+                hold: value.hold.into(),
+                trigger: value.trigger.into(),
+                release: value.release.into(),
+                pointer,
+                gyro,
+            },
+            Ext::MotionPlusNunchuk => Input::NunchukPlus {
+                hold: value.hold.into(),
+                trigger: value.trigger.into(),
+                release: value.release.into(),
+                stick: unsafe { value.extension.nunchuk }.stick.into(),
+                pointer,
+                gyro,
+            },
+            Ext::Classic | Ext::MotionPlusClassic => Input::Classic {
+                hold: Button::from(value.hold) | unsafe { value.extension.classic }.hold.into(),
+                trigger: Button::from(value.trigger)
+                    | unsafe { value.extension.classic }.trigger.into(),
+                release: Button::from(value.release)
+                    | unsafe { value.extension.classic }.release.into(),
+                left_stick: unsafe { value.extension.classic }.left_stick.into(),
+                right_stick: unsafe { value.extension.classic }.right_stick.into(),
+            },
+            Ext::Urcc => Input::UURC {
+                hold: Button::from(value.hold) | unsafe { value.extension.urcc }.hold.into(),
+                trigger: Button::from(value.trigger)
+                    | unsafe { value.extension.urcc }.trigger.into(),
+                release: Button::from(value.release)
+                    | unsafe { value.extension.urcc }.release.into(),
+                left_stick: unsafe { value.extension.urcc }.left_stick.into(),
+                right_stick: unsafe { value.extension.urcc }.right_stick.into(),
+                gyro,
+            },
+            ext => {
+                log::debug!("Input device not supported: {:?}", ext);
+                // still output generic controller data
+                Input::Wiimote {
+                    hold: value.hold.into(),
+                    trigger: value.trigger.into(),
+                    release: value.trigger.into(),
+                    pointer,
+                }
+            }
         }
     }
 }
@@ -362,7 +594,7 @@ impl<P: Pointer, G: Gyro, T: Touch> Gamepads<P, G, T> {
     }
 
     pub fn config() -> GamepadsConfig<P, G, T> {
-        GamepadsConfig(core::marker::PhantomData)
+        GamepadsConfig::new()
     }
 
     pub fn poll(&mut self) -> &Self {
@@ -376,19 +608,83 @@ impl<P: Pointer, G: Gyro, T: Touch> Gamepads<P, G, T> {
                         sys::vpad::poll(sys::vpad::Channel::C0, status.as_mut_ptr(), 1, &mut error)
                     };
 
-                    if n != 1 || error != sys::vpad::Error::Success {
-                        *input = None;
-                    } else {
+                    if n == 1 && error == sys::vpad::Error::Success {
                         *input = Some(Input::from(unsafe { status.assume_init() }));
+                    } else if error == sys::vpad::Error::NoSamples {
+                    } else {
+                        *input = None;
                     }
                 }
                 _ => {
-                    // todo!()
+                    let channel = match port {
+                        Port::P0 => sys::padscore::wpad::Channel::C0,
+                        Port::P1 => sys::padscore::wpad::Channel::C1,
+                        Port::P2 => sys::padscore::wpad::Channel::C2,
+                        Port::P3 => sys::padscore::wpad::Channel::C3,
+                        Port::P4 => sys::padscore::wpad::Channel::C4,
+                        Port::P5 => sys::padscore::wpad::Channel::C5,
+                        Port::P6 => sys::padscore::wpad::Channel::C6,
+                        Port::DRC => unreachable!(),
+                    };
+
+                    let mut status = std::mem::MaybeUninit::zeroed();
+                    let mut error = sys::padscore::kpad::Error::Ok;
+
+                    let n = unsafe {
+                        sys::padscore::kpad::poll(channel, status.as_mut_ptr(), 1, &mut error)
+                    };
+
+                    if n == 1 && error == sys::padscore::kpad::Error::Ok {
+                        *input = Some(Input::from(unsafe { status.assume_init() }));
+                    } else if error == sys::padscore::kpad::Error::NoSamples {
+                    } else {
+                        *input = None;
+                    }
                 }
             }
         }
 
         self
+    }
+
+    pub fn is_held(&self, button: Button) -> bool {
+        self.inputs
+            .iter()
+            .any(|(_, input)| input.as_ref().map_or(false, |input| input.is_held(button)))
+    }
+
+    pub fn is_triggered(&self, button: Button) -> bool {
+        self.inputs.iter().any(|(_, input)| {
+            input
+                .as_ref()
+                .map_or(false, |input| input.is_triggered(button))
+        })
+    }
+
+    pub fn is_released(&self, button: Button) -> bool {
+        self.inputs.iter().any(|(_, input)| {
+            input
+                .as_ref()
+                .map_or(false, |input| input.is_released(button))
+        })
+    }
+
+    pub fn is_held_by(&self, button: Button, port: Port) -> bool {
+        self.port(port)
+            .as_ref()
+            .map_or(false, |input| input.is_held(button))
+    }
+
+    pub fn is_triggered_by(&self, button: Button, port: Port) -> bool {
+        self.port(port)
+            .as_ref()
+            .map_or(false, |input| input.is_triggered(button))
+    }
+
+    pub fn is_released_by(&self, button: Button, port: Port) -> bool {
+        self.port(port)
+            .as_ref()
+            .map_or(false, |input| input.is_released(button))
     }
 }
 
