@@ -22,10 +22,12 @@
 //!
 //! let mut gamepads = Gamepads::default();
 //!
-//! gamepads.poll();
+//! loop {
+//!     gamepads.poll();
 //!
-//! for (port, input) in &gamepads {
-//!     log::info!("{:?} - {:?}", port, input);
+//!     for (port, input) in &gamepads {
+//!         // ...
+//!     }
 //! }
 //! ```
 
