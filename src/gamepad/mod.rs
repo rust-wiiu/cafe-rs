@@ -1,9 +1,26 @@
-//! Gamepad
+//! Access controller input from connected gamepads. The API is designed to only capture buttons and joystick inputs by default but can be extended with pointer, gyro, and touch controls when needed.
+//!
+//! Supported controllers:
+//! * Display Remote Controller (DRC)
+//! * Wiimote
+//! * Wiimote + Nunchuk
+//! * Wiimote + Classic
+//! * Motion Plus
+//! * Motion Plus + Nunchuk
+//! * Motion Plus + Classic
+//! * Wii U Pro Controller (URCC)
+//!
+//! Currently only buttons and joysticks are supported. The basics for pointer, gyro, and touch support is there but not implemented.
+//!
+//! The Wii U has in interal ring buffer which the controller data is written to. [Gamepads] acts as a secondary cache to simplify the management of input states.
 //!
 //! # Example
 //!
 //! ```rust
-//! let mut gamepads = cafe::gamepads::Gamepads::default();
+//! # use cafe_rs::prelude::*;
+//! use cafe::gamepads::Gamepads;
+//!
+//! let mut gamepads = Gamepads::default();
 //!
 //! gamepads.poll();
 //!
@@ -313,6 +330,7 @@ impl Touch for () {
     fn from_kpad(_status: &sys::padscore::kpad::Status) -> Self {}
 }
 
+/// Holds the input data from the various gamepad types.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Input<Pointer = (), Gyro = (), Touch = ()> {
     Wiimote {
@@ -370,6 +388,7 @@ pub enum Input<Pointer = (), Gyro = (), Touch = ()> {
 }
 
 impl<P, G, T> Input<P, G, T> {
+    /// Convenience method for held buttons regardless of input device.
     pub const fn hold(&self) -> Button {
         match self {
             Self::Wiimote { hold, .. }
@@ -382,6 +401,7 @@ impl<P, G, T> Input<P, G, T> {
         }
     }
 
+    /// Convenience method for triggered buttons regardless of input device.
     pub const fn trigger(&self) -> Button {
         match self {
             Self::Wiimote { trigger, .. }
@@ -394,6 +414,7 @@ impl<P, G, T> Input<P, G, T> {
         }
     }
 
+    /// Convenience method for released buttons regardless of input device.
     pub const fn release(&self) -> Button {
         match self {
             Self::Wiimote { release, .. }
@@ -406,6 +427,9 @@ impl<P, G, T> Input<P, G, T> {
         }
     }
 
+    /// Convenience method for left joystick. Returns `None` if controller does not have a (left) stick.
+    ///
+    /// Nunchuks stick is considers left stick.
     pub const fn left_stick(&self) -> Option<Joystick> {
         match self {
             Self::Nunchuk { stick, .. } => Some(*stick),
@@ -414,6 +438,7 @@ impl<P, G, T> Input<P, G, T> {
         }
     }
 
+    /// Convenience method for left joystick. Returns `None` if controller does not have a right stick.
     pub const fn right_stick(&self) -> Option<Joystick> {
         match self {
             Self::UURC { right_stick, .. } | Self::DRC { right_stick, .. } => Some(*right_stick),
@@ -421,42 +446,52 @@ impl<P, G, T> Input<P, G, T> {
         }
     }
 
+    /// Checks if input is from a Wiimote.
     pub const fn is_wiimote(&self) -> bool {
         matches!(self, Self::Wiimote { .. })
     }
 
+    /// Checks if input is from a Wiimote + Nunchuk.
     pub const fn is_nunchuk(&self) -> bool {
         matches!(self, Self::Nunchuk { .. })
     }
 
+    /// Checks if input is from a Motion Plus.
     pub const fn is_wiimote_plus(&self) -> bool {
         matches!(self, Self::WiimotePlus { .. })
     }
 
+    /// Checks if input is from a Motion Plus + Nunchuk.
     pub const fn is_nunchuk_plus(&self) -> bool {
         matches!(self, Self::NunchukPlus { .. })
     }
 
+    /// Checks if input is from a Wii Classic Controller.
     pub const fn is_classic(&self) -> bool {
         matches!(self, Self::Classic { .. })
     }
 
+    /// Checks if input is from a Wii U Pro Controller (URCC).
     pub const fn is_urcc(&self) -> bool {
         matches!(self, Self::UURC { .. })
     }
 
+    /// Checks if input is from a Display Remote Controller.
     pub const fn is_drc(&self) -> bool {
         matches!(self, Self::DRC { .. })
     }
 
+    /// Checks if a button is held.
     pub const fn is_held(&self, button: Button) -> bool {
         self.hold().contains(button)
     }
 
+    /// Checks if a button is triggered.
     pub const fn is_triggered(&self, button: Button) -> bool {
         self.trigger().contains(button)
     }
 
+    /// Checks if a button is released.
     pub const fn is_released(&self, button: Button) -> bool {
         self.release().contains(button)
     }
@@ -550,6 +585,22 @@ impl<P: Pointer, G: Gyro, T: Touch> From<sys::padscore::kpad::Status> for Input<
     }
 }
 
+/// Manages the state of connected gamepads and provides methods to query their input. `IntoIterator` will yield the port and input of all currently connected gamepads. The state of the gamepads is only updated when [poll][Gamepads::poll] is called, allowing for more control over when input is captured. The systems expects [poll][Gamepads::poll] to be called on a regular basis (at best every frame).
+///
+/// # Example
+///
+/// ```
+/// # use cafe_rs::prelude::*;
+/// use cafe::gamepad::{Gamepads, Port};
+///
+/// let mut gamepads = Gamepads::default();
+///
+/// gamepads.poll();
+///
+/// for (port, input) in &gamepads {}
+///
+/// let input = gamepads.port(Port::DRC)?;
+/// ```
 pub struct Gamepads<Pointer = (), Gyro = (), Touch = ()> {
     inputs: [(Port, Option<Input<Pointer, Gyro, Touch>>); 8],
     _resource: Resource,
@@ -574,29 +625,68 @@ impl<P: Pointer, G: Gyro, T: Touch> Default for Gamepads<P, G, T> {
 }
 
 impl Gamepads {
+    /// Use default gamepad types for the application.
+    ///
+    /// To modify which gamepads can be used use [config][Gamepad::config].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use cafe_rs::prelude::*;
+    /// use cafe::gamepad::Gamepads;
+    ///
+    /// let mut gamepads = Gamepads::default();
+    /// ```
     pub fn default() -> Self {
         <Self as Default>::default()
     }
 }
 
 impl<P: Pointer, G: Gyro, T: Touch> Gamepads<P, G, T> {
-    pub fn port(&self, port: Port) -> &Option<Input<P, G, T>> {
-        match port {
-            Port::P0 => &self.inputs[0].1,
-            Port::P1 => &self.inputs[1].1,
-            Port::P2 => &self.inputs[2].1,
-            Port::P3 => &self.inputs[3].1,
-            Port::P4 => &self.inputs[4].1,
-            Port::P5 => &self.inputs[5].1,
-            Port::P6 => &self.inputs[6].1,
-            Port::DRC => &self.inputs[7].1,
-        }
-    }
-
+    /// Enable and disabled certain gamepad types for the application.
+    ///
+    /// To use the default configuration use [default][Gamepads::default].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use cafe_rs::prelude::*;
+    /// use cafe::gamepad::Gamepads;
+    ///
+    /// let mut gamepads = Gamepads::<()>::config().urcc(true).init();
+    /// ```
     pub fn config() -> GamepadsConfig<P, G, T> {
         GamepadsConfig::new()
     }
 
+    /// Returns the input of a single port from cache.
+    pub fn port(&self, port: Port) -> Option<&Input<P, G, T>> {
+        match port {
+            Port::P0 => self.inputs[0].1.as_ref(),
+            Port::P1 => self.inputs[1].1.as_ref(),
+            Port::P2 => self.inputs[2].1.as_ref(),
+            Port::P3 => self.inputs[3].1.as_ref(),
+            Port::P4 => self.inputs[4].1.as_ref(),
+            Port::P5 => self.inputs[5].1.as_ref(),
+            Port::P6 => self.inputs[6].1.as_ref(),
+            Port::DRC => self.inputs[7].1.as_ref(),
+        }
+    }
+
+    /// Updates the interal cache with current input states.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use cafe_rs::prelude::*;
+    /// use cafe::gamepad::Gamepads;
+    ///
+    /// let mut gamepads = Gamepads::default;
+    ///
+    /// gamepads.poll();
+    ///
+    /// for (port, input) in gamepads.poll() {}
+    /// ```
     pub fn poll(&mut self) -> &Self {
         for (port, input) in &mut self.inputs {
             match port {
@@ -647,12 +737,14 @@ impl<P: Pointer, G: Gyro, T: Touch> Gamepads<P, G, T> {
         self
     }
 
+    /// Checks if a button is held on any connected gamepad.
     pub fn is_held(&self, button: Button) -> bool {
         self.inputs
             .iter()
             .any(|(_, input)| input.as_ref().map_or(false, |input| input.is_held(button)))
     }
 
+    /// Checks if a button is triggered on any connected gamepad.
     pub fn is_triggered(&self, button: Button) -> bool {
         self.inputs.iter().any(|(_, input)| {
             input
@@ -661,6 +753,7 @@ impl<P: Pointer, G: Gyro, T: Touch> Gamepads<P, G, T> {
         })
     }
 
+    /// Checks if a button is released on any connected gamepad.
     pub fn is_released(&self, button: Button) -> bool {
         self.inputs.iter().any(|(_, input)| {
             input
@@ -669,18 +762,21 @@ impl<P: Pointer, G: Gyro, T: Touch> Gamepads<P, G, T> {
         })
     }
 
+    /// Checks if a button is held on a specific port.
     pub fn is_held_by(&self, button: Button, port: Port) -> bool {
         self.port(port)
             .as_ref()
             .map_or(false, |input| input.is_held(button))
     }
 
+    /// Checks if a button is triggered on a specific port.
     pub fn is_triggered_by(&self, button: Button, port: Port) -> bool {
         self.port(port)
             .as_ref()
             .map_or(false, |input| input.is_triggered(button))
     }
 
+    /// Checks if a button is released on a specific port.
     pub fn is_released_by(&self, button: Button, port: Port) -> bool {
         self.port(port)
             .as_ref()
@@ -695,6 +791,7 @@ impl<'a, P, G, T> IntoIterator for &'a Gamepads<P, G, T> {
         fn(&(Port, Option<Input<P, G, T>>)) -> Option<(Port, &Input<P, G, T>)>,
     >;
 
+    /// Iterates over all connected gamepads.
     fn into_iter(self) -> Self::IntoIter {
         self.inputs
             .iter()
