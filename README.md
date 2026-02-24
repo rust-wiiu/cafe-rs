@@ -8,7 +8,7 @@
 ## Goals
 
 - Easy-to-use: Provide intuitive APIs along with good documentation
-- Idiomatic: Write Rust code which feels right
-- std-like: Adhere to Rusts [std](https://doc.rust-lang.org/std/) APIs as much as possible where applicable
-- Compatible: Write 100% compatible application within the [existing ecosystem](https://github.com/wiiu-env)
-- Simple: Require as little external tools as possible
+- Idiomatic: Write Rust code that feels right
+- std-like: Adhere to Rust's [std](https://doc.rust-lang.org/std/) APIs as much as possible where applicable
+- Compatible: Write 100% compatible applications within the [existing ecosystem](https://github.com/wiiu-env)
+- Simple: Require as few external tools as possibl
