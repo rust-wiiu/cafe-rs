@@ -3,7 +3,7 @@
 > [!CAUTION]
 > `cafe-rs` is in active experimentation / development phase.
 
-`cafe-rs` is the heart of Rust software for Wii U homebrew. It aims to be the Rust alternative to [wut](https://github.com/devkitPro/wut), _the_ C++ SDK / toolchain for homebrew apps, developed by [devkitPro](https://github.com/devkitPro) and [the community](https://github.com/devkitPro/wut/graphs/contributors).
+`cafe-rs` is the heart of Rust software for Wii U homebrew. It aims to be the Rust alternative to [wut](https://github.com/devkitPro/wut), _the_ C++ SDK / toolchain for homebrew apps, developed by [devkitPro](https://github.com/devkitPro) and the [community](https://github.com/devkitPro/wut/graphs/contributors).
 
 ## Goals
 
