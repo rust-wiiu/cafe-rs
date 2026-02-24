@@ -11,4 +11,4 @@
 - Idiomatic: Write Rust code that feels right
 - std-like: Adhere to Rust's [std](https://doc.rust-lang.org/std/) APIs as much as possible where applicable
 - Compatible: Create applications within the [existing ecosystem](https://github.com/wiiu-env)
-- Simple: Require as few external tools as possible
+- Self-Contained: Require as few external tools as possible
