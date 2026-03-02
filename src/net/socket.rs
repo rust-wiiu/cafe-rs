@@ -2,13 +2,9 @@
 
 use crate::prelude::*;
 
-use crate::{Error, Result};
 use cafe::rrc::{Resource, Rrc};
-use std::{
-    mem::size_of_val,
-    net::{SocketAddr, SocketAddrV4},
-};
-use sys::nsysnet::socket;
+use std::{io, mem::size_of_val, net::SocketAddrV4, ptr};
+use sys::nsys::net::socket;
 
 static SOCKET: Rrc = Rrc::new(
     || unsafe {
@@ -21,71 +17,215 @@ static SOCKET: Rrc = Rrc::new(
 
 #[derive(Debug, Clone)]
 pub struct Socket {
-    fd: socket::RawFd,
+    fd: socket::FileDescriptor,
     _resource: Resource,
 }
 
 impl Socket {
-    pub fn tcp() -> Result<Self> {
+    #[inline]
+    pub fn tcp() -> io::Result<Self> {
         let _resource = SOCKET.acquire();
 
         let fd = unsafe {
             socket::socket(
-                socket::SocketFamily::IPv4,
-                socket::SocketType::Stream,
-                socket::SocketProtocol::Tcp,
+                socket::Family::IPv4,
+                socket::Type::Stream,
+                socket::Protocol::Tcp,
             )
         };
 
         if fd == -1 {
-            Err(Error::Any("socket returned -1"))
+            Err(unsafe { socket::last_error() }.into())
         } else {
             Ok(Self { fd, _resource })
         }
     }
 
-    pub fn udp() -> Result<Self> {
+    #[inline]
+    pub fn udp() -> io::Result<Self> {
         let _resource = SOCKET.acquire();
 
         let fd = unsafe {
             socket::socket(
-                socket::SocketFamily::IPv4,
-                socket::SocketType::Datagram,
-                socket::SocketProtocol::Udp,
+                socket::Family::IPv4,
+                socket::Type::Datagram,
+                socket::Protocol::Udp,
             )
         };
 
         if fd == -1 {
-            Err(Error::Any("socket returned -1"))
+            Err(unsafe { socket::last_error() }.into())
         } else {
             Ok(Self { fd, _resource })
         }
     }
 
-    pub fn send_to(
-        &self,
-        data: &[u8],
-        to: &SocketAddrV4,
-        flags: Option<socket::SocketFlags>,
-    ) -> Result<()> {
-        let to = (*to).into();
+    #[inline]
+    pub fn bind(&self, addr: SocketAddrV4) -> io::Result<()> {
+        let addr = convert_addr(addr);
+        let addrlen = size_of_val(&addr);
 
+        let x = unsafe { socket::bind(self.fd, &addr, addrlen) };
+
+        if x == -1 {
+            Err(unsafe { socket::last_error() }.into())
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline]
+    pub fn connect(&self, remote: SocketAddrV4) -> io::Result<()> {
+        let addr = convert_addr(remote);
+        let addrlen = size_of_val(&addr);
+
+        let x = unsafe { socket::connect(self.fd, &addr, addrlen) };
+
+        if x == -1 {
+            Err(unsafe { socket::last_error() }.into())
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline]
+    pub fn listen(&self, backlog: i32) -> io::Result<()> {
+        let x = unsafe { socket::listen(self.fd, backlog) };
+
+        if x == -1 {
+            Err(unsafe { socket::last_error() }.into())
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline]
+    pub fn recv(&self, buffer: &mut [u8], flags: Option<socket::Flags>) -> io::Result<usize> {
+        let len = buffer.len() as u32;
+        let buffer = buffer.as_mut_ptr();
         let flags = flags.unwrap_or_default();
 
-        let sent = unsafe {
-            socket::sendto(
-                self.fd,
-                data.as_ptr().cast(),
-                data.len() as i32,
-                flags.bits(),
-                &to,
-                size_of_val(&to) as i32,
-            )
+        let received = unsafe { socket::recv(self.fd, buffer.cast(), len, flags) };
+
+        if received == -1 {
+            Err(unsafe { socket::last_error() }.into())
+        } else {
+            Ok(received as usize)
+        }
+    }
+
+    #[inline]
+    pub fn recvfrom(
+        &self,
+        buffer: &mut [u8],
+        flags: Option<socket::Flags>,
+        from: Option<SocketAddrV4>,
+    ) -> io::Result<usize> {
+        let len = buffer.len() as u32;
+        let buffer = buffer.as_mut_ptr();
+        let flags = flags.unwrap_or_default();
+
+        let addr = from.map(convert_addr);
+
+        let (from, fromlen) = if let Some(addr) = &addr {
+            (addr as *const socket::Address, size_of_val(addr))
+        } else {
+            (ptr::null(), 0)
         };
 
+        let received =
+            unsafe { socket::recvfrom(self.fd, buffer.cast(), len, flags, from, fromlen) };
+
+        if received == -1 {
+            Err(unsafe { socket::last_error() }.into())
+        } else {
+            Ok(received as usize)
+        }
+    }
+
+    #[inline]
+    pub fn send(&self, buffer: &[u8], flags: Option<socket::Flags>) -> io::Result<usize> {
+        let len = buffer.len() as u32;
+        let buffer = buffer.as_ptr();
+        let flags = flags.unwrap_or_default();
+
+        let sent = unsafe { socket::send(self.fd, buffer.cast(), len, flags) };
+
         if sent == -1 {
-            let error = unsafe { socket::last_error() };
-            Err(Error::Integer(error))
+            Err(unsafe { socket::last_error() }.into())
+        } else {
+            Ok(sent as usize)
+        }
+    }
+
+    #[inline]
+    pub fn sendto(
+        &self,
+        buffer: &[u8],
+        to: SocketAddrV4,
+        flags: Option<socket::Flags>,
+    ) -> io::Result<usize> {
+        let len = buffer.len() as u32;
+        let buffer = buffer.as_ptr();
+        let flags = flags.unwrap_or_default();
+
+        let addr = convert_addr(to);
+        let addrlen = size_of_val(&addr);
+
+        let sent = unsafe { socket::sendto(self.fd, buffer.cast(), len, flags, &addr, addrlen) };
+
+        if sent == -1 {
+            Err(unsafe { socket::last_error() }.into())
+        } else {
+            Ok(sent as usize)
+        }
+    }
+
+    #[inline]
+    pub fn peer(&self) -> io::Result<SocketAddrV4> {
+        let mut addr = socket::Address::default();
+        let addrlen = size_of_val(&addr);
+
+        let x = unsafe { socket::get_peername(self.fd, &mut addr, addrlen) };
+
+        if x == -1 {
+            Err(unsafe { socket::last_error() }.into())
+        } else {
+            Ok(SocketAddrV4::new(addr.address.into(), addr.port))
+        }
+    }
+
+    #[inline]
+    pub fn address(&self) -> io::Result<SocketAddrV4> {
+        let mut addr = socket::Address::default();
+        let addrlen = size_of_val(&addr);
+
+        let x = unsafe { socket::get_sockname(self.fd, &mut addr, addrlen) };
+
+        if x == -1 {
+            Err(unsafe { socket::last_error() }.into())
+        } else {
+            Ok(SocketAddrV4::new(addr.address.into(), addr.port))
+        }
+    }
+
+    #[inline]
+    pub fn shutdown(&self, how: socket::Shutdown) -> io::Result<()> {
+        let x = unsafe { socket::shutdown(self.fd, how) };
+
+        if x == -1 {
+            Err(unsafe { socket::last_error() }.into())
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline]
+    fn close(&self) -> io::Result<()> {
+        let x = unsafe { socket::close(self.fd) };
+
+        if x == -1 {
+            Err(unsafe { socket::last_error() }.into())
         } else {
             Ok(())
         }
@@ -94,43 +234,17 @@ impl Socket {
 
 impl Drop for Socket {
     fn drop(&mut self) {
-        unsafe {
-            socket::shutdown(self.fd, socket::Shutdown::ReadWrite);
-            socket::close(self.fd);
-        }
+        let _ = self.shutdown(socket::Shutdown::ReadWrite);
+        let _ = self.close();
     }
 }
 
-pub trait ToSocketAddrs {
-    type Iter: Iterator<Item = SocketAddrV4>;
-
-    fn to_socket_addrs(&self) -> Result<Self::Iter>;
-}
-
-impl ToSocketAddrs for ([u8; 4], u16) {
-    type Iter = std::iter::Once<SocketAddrV4>;
-
-    fn to_socket_addrs(&self) -> Result<Self::Iter> {
-        let addr = SocketAddrV4::new(self.0.into(), self.1);
-        Ok(std::iter::once(addr))
-    }
-}
-
-impl ToSocketAddrs for SocketAddr {
-    type Iter = std::iter::Once<SocketAddrV4>;
-
-    fn to_socket_addrs(&self) -> Result<Self::Iter> {
-        match self {
-            SocketAddr::V4(addr) => Ok(std::iter::once(*addr)),
-            SocketAddr::V6(_) => Err(Error::Any("IPv6 addresses are not supported")),
-        }
-    }
-}
-
-impl ToSocketAddrs for SocketAddrV4 {
-    type Iter = std::iter::Once<SocketAddrV4>;
-
-    fn to_socket_addrs(&self) -> Result<Self::Iter> {
-        Ok(std::iter::once(*self))
+#[inline]
+const fn convert_addr(addr: SocketAddrV4) -> socket::Address {
+    socket::Address {
+        family: socket::Family::IPv4,
+        port: addr.port(),
+        address: addr.ip().to_bits(),
+        zero: [0; 8],
     }
 }

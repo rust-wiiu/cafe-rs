@@ -10,14 +10,10 @@
 //! use cafe::net::Socket;
 //! ```
 
-pub use crate::std;
-
-#[cfg(feature = "alloc")]
-pub use alloc_crate::format;
-
-pub use cafe_sys as sys;
-pub use sys::UnsafeInit;
-
 pub use crate as cafe;
+pub use crate::std;
+pub use cafe_sys as sys;
 
-pub use std::{boxed::Box, vec, vec::Vec};
+pub use alloc_crate::format;
+pub use std::{boxed::Box, fmt::Debug, vec, vec::Vec};
+pub use sys::UnsafeInit;

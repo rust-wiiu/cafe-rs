@@ -1,18 +1,18 @@
 //! network
 
 use crate::rrc::{Resource, Rrc};
-use crate::sys::nn_ac;
+use crate::sys::nn::ac;
 use crate::{Error, Result};
 
 static AC: Rrc = Rrc::new(
     || unsafe {
-        match nn_ac::ac::init() {
-            nn_ac::ac::AcStatus::Failed => panic!("auto connect could not initialize"),
-            nn_ac::ac::AcStatus::Processing => (),
-            nn_ac::ac::AcStatus::Ok => (),
+        match ac::init() {
+            ac::AcStatus::Failed => panic!("auto connect could not initialize"),
+            ac::AcStatus::Processing => (),
+            ac::AcStatus::Ok => (),
         }
     },
-    || unsafe { nn_ac::ac::deinit() },
+    || unsafe { ac::deinit() },
 );
 
 pub struct Network {
@@ -29,20 +29,20 @@ impl Default for Network {
 
 impl Network {
     pub fn connect(&self) -> Result<()> {
-        match unsafe { nn_ac::ac::connect() } {
-            nn_ac::ac::AcStatus::Failed => Err(Error::Any("cannot connect to network")),
-            nn_ac::ac::AcStatus::Ok => Ok(()),
+        match unsafe { ac::connect() } {
+            ac::AcStatus::Failed => Err(Error::Any("cannot connect to network")),
+            ac::AcStatus::Ok => Ok(()),
             // cannot happen in non-async mode
-            nn_ac::ac::AcStatus::Processing => Ok(()),
+            ac::AcStatus::Processing => Ok(()),
         }
     }
 
     fn _disconnect(&self) -> Result<()> {
-        match unsafe { nn_ac::ac::close() } {
-            nn_ac::ac::AcStatus::Failed => Err(Error::Any("cannot disconnect from network")),
-            nn_ac::ac::AcStatus::Ok => Ok(()),
+        match unsafe { ac::close() } {
+            ac::AcStatus::Failed => Err(Error::Any("cannot disconnect from network")),
+            ac::AcStatus::Ok => Ok(()),
             // cannot happen in non-async mode
-            nn_ac::ac::AcStatus::Processing => Ok(()),
+            ac::AcStatus::Processing => Ok(()),
         }
     }
 
