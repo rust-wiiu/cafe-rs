@@ -71,6 +71,8 @@ impl ops::SubAssign<Duration> for SystemTime {
 }
 
 impl SystemTime {
+    pub const STARTUP: Self = SystemTime(0);
+
     /// The current local time.
     ///
     /// Local time is the time configured in the system settings.
