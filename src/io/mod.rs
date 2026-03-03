@@ -51,7 +51,7 @@ pub enum Error {
     // StaleNetworkFileHandle,
     #[error("A parameter was incorrect.")]
     InvalidInput,
-    #[error("Data not valid for the operation were encountered.")]
+    #[error("Data not valid for the operation encountered.")]
     InvalidData,
     #[error("The I/O operation’s timeout expired, causing it to be canceled.")]
     TimedOut,
@@ -99,8 +99,86 @@ pub enum Error {
 
 impl From<sys::nsys::net::socket::Error> for Error {
     fn from(value: sys::nsys::net::socket::Error) -> Self {
+        use sys::nsys::net::socket::Error as SocketError;
         match value {
+            SocketError::InsufficientResources => Self::OutOfMemory,
+            SocketError::TimedOut => Self::TimedOut,
+            SocketError::AlreadyConnected => Self::AlreadyExists,
+            SocketError::OperationNotSupported => Self::Unsupported,
+            SocketError::ConnectionAborted => Self::ConnectionAborted,
+            SocketError::WouldBlock => Self::WouldBlock,
+            SocketError::ConnectionRefused => Self::ConnectionRefused,
+            SocketError::NotConnected => Self::NotConnected,
+            SocketError::AlreadyInProgress => Self::ResourceBusy,
+            SocketError::InvalidOperation => Self::Unsupported,
+            SocketError::MessageTooLarge => Self::InvalidInput,
+            SocketError::BrokenPipe => Self::BrokenPipe,
+            SocketError::DestinationAddressRequired => Self::NotConnected,
+            SocketError::Shutdown => Self::Interrupted,
+            SocketError::ProtocolOptionNotSupported => Self::Unsupported,
+            SocketError::OutOfBandDataPending => Self::Interrupted,
+            SocketError::InsufficientMemory => Self::OutOfMemory,
+            SocketError::AddressNotAvailable => Self::AddrNotAvailable,
+            SocketError::AddressInUse => Self::AddrInUse,
+            SocketError::AddressFamilyNotSupported => Self::AddrNotAvailable,
+            SocketError::InProgress => Self::AlreadyExists,
+            SocketError::IpLayerError => Self::BrokenPipe,
+            SocketError::NotASocket => Self::ConnectionRefused,
+            SocketError::IoError => Self::Interrupted,
+            SocketError::TooManyReferences => Self::Interrupted,
+            SocketError::BadAddress => Self::InvalidData,
+            SocketError::NetworkUnreachable => Self::NetworkUnreachable,
+            SocketError::ProtocolNotSupported => Self::Unsupported,
+            SocketError::ProtocolTypeMismatch => Self::Unsupported,
+            SocketError::GenericError => Self::Other,
+            SocketError::FailedToOpenResourceManager => Self::ResourceBusy,
+            SocketError::LibraryNotInitialized => Self::Interrupted,
+            SocketError::Busy => Self::ResourceBusy,
+            SocketError::Unknown => Self::Other,
+            SocketError::InternalApiError => Self::Other,
+            SocketError::InvalidErrorCode => Self::Other,
+            SocketError::NoResources => Self::OutOfMemory,
+            SocketError::BadFileDescriptor => Self::InvalidInput,
+            SocketError::Aborted => Self::ConnectionAborted,
+            SocketError::TooManySockets => Self::QuotaExceeded,
+            SocketError::IcmpDestinationUnreachable => Self::HostUnreachable,
+            SocketError::IcmpSourceQuench => Self::Other,
+            SocketError::IcmpRedirect => Self::Other,
+            SocketError::IcmpTimeExceeded => Self::Other,
+            SocketError::IcmpParameterProblem => Self::Other,
+            //
             _ => Self::Other,
         }
     }
+}
+
+impl From<core::net::AddrParseError> for Error {
+    fn from(value: core::net::AddrParseError) -> Self {
+        Self::InvalidInput
+    }
+}
+
+pub trait Write {
+    fn write(&mut self, buf: &[u8]) -> Result<usize>;
+    fn flush(&mut self) -> Result<()>;
+}
+
+pub trait Read {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
+}
+
+pub trait BufRead: Read {
+    fn fill_buf(&mut self) -> Result<&[u8]>;
+    fn consume(&mut self, amount: usize);
+}
+
+pub trait Seek {
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeekFrom {
+    Start(u64),
+    End(i64),
+    Current(i64),
 }

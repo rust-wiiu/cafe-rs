@@ -3,7 +3,7 @@
 use crate::prelude::*;
 
 use cafe::rrc::{Resource, Rrc};
-use std::{io, mem::size_of_val, net::SocketAddrV4, ptr};
+use std::{io, mem::size_of_val, net::SocketAddrV4};
 use sys::nsys::net::socket;
 
 static SOCKET: Rrc = Rrc::new(
@@ -15,6 +15,8 @@ static SOCKET: Rrc = Rrc::new(
     },
 );
 
+pub use socket::{Flags, Level, Options, Protocol, Shutdown};
+
 #[derive(Debug, Clone)]
 pub struct Socket {
     fd: socket::FileDescriptor,
@@ -22,6 +24,14 @@ pub struct Socket {
 }
 
 impl Socket {
+    #[inline]
+    pub fn last_error() -> Option<socket::Error> {
+        match unsafe { socket::last_error() } {
+            socket::Error::Success => None,
+            err => Some(err),
+        }
+    }
+
     #[inline]
     pub fn tcp() -> io::Result<Self> {
         let _resource = SOCKET.acquire();
@@ -35,7 +45,9 @@ impl Socket {
         };
 
         if fd == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
         } else {
             Ok(Self { fd, _resource })
         }
@@ -54,7 +66,9 @@ impl Socket {
         };
 
         if fd == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
         } else {
             Ok(Self { fd, _resource })
         }
@@ -68,7 +82,9 @@ impl Socket {
         let x = unsafe { socket::bind(self.fd, &addr, addrlen) };
 
         if x == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
         } else {
             Ok(())
         }
@@ -82,7 +98,9 @@ impl Socket {
         let x = unsafe { socket::connect(self.fd, &addr, addrlen) };
 
         if x == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
         } else {
             Ok(())
         }
@@ -93,14 +111,41 @@ impl Socket {
         let x = unsafe { socket::listen(self.fd, backlog) };
 
         if x == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
         } else {
             Ok(())
         }
     }
 
     #[inline]
-    pub fn recv(&self, buffer: &mut [u8], flags: Option<socket::Flags>) -> io::Result<usize> {
+    pub fn accept(&self) -> io::Result<(Socket, SocketAddrV4)> {
+        let mut addr = std::mem::MaybeUninit::zeroed();
+        let mut addrlen = size_of_val(&addr);
+
+        let socket = unsafe { socket::accept(self.fd, addr.as_mut_ptr(), &mut addrlen) };
+        debug_assert_eq!(addrlen, size_of_val(&addr));
+
+        if socket == -1 {
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
+        } else {
+            let addr = unsafe { addr.assume_init() };
+
+            Ok((
+                Self {
+                    fd: socket,
+                    _resource: self._resource.clone(),
+                },
+                SocketAddrV4::new(addr.address.into(), addr.port),
+            ))
+        }
+    }
+
+    #[inline]
+    pub fn recv(&self, buffer: &mut [u8], flags: Option<Flags>) -> io::Result<usize> {
         let len = buffer.len() as u32;
         let buffer = buffer.as_mut_ptr();
         let flags = flags.unwrap_or_default();
@@ -108,7 +153,9 @@ impl Socket {
         let received = unsafe { socket::recv(self.fd, buffer.cast(), len, flags) };
 
         if received == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
         } else {
             Ok(received as usize)
         }
@@ -118,33 +165,42 @@ impl Socket {
     pub fn recvfrom(
         &self,
         buffer: &mut [u8],
-        flags: Option<socket::Flags>,
-        from: Option<SocketAddrV4>,
-    ) -> io::Result<usize> {
+        flags: Option<Flags>,
+    ) -> io::Result<(usize, SocketAddrV4)> {
         let len = buffer.len() as u32;
         let buffer = buffer.as_mut_ptr();
         let flags = flags.unwrap_or_default();
 
-        let addr = from.map(convert_addr);
+        let mut from = std::mem::MaybeUninit::zeroed();
+        let mut fromlen = size_of_val(&from);
 
-        let (from, fromlen) = if let Some(addr) = &addr {
-            (addr as *const socket::Address, size_of_val(addr))
-        } else {
-            (ptr::null(), 0)
+        let received = unsafe {
+            socket::recvfrom(
+                self.fd,
+                buffer.cast(),
+                len,
+                flags,
+                from.as_mut_ptr(),
+                &mut fromlen,
+            )
         };
-
-        let received =
-            unsafe { socket::recvfrom(self.fd, buffer.cast(), len, flags, from, fromlen) };
+        debug_assert_eq!(fromlen, size_of_val(&from));
 
         if received == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
         } else {
-            Ok(received as usize)
+            let from = unsafe { from.assume_init() };
+            Ok((
+                received as usize,
+                SocketAddrV4::new(from.address.into(), from.port),
+            ))
         }
     }
 
     #[inline]
-    pub fn send(&self, buffer: &[u8], flags: Option<socket::Flags>) -> io::Result<usize> {
+    pub fn send(&self, buffer: &[u8], flags: Option<Flags>) -> io::Result<usize> {
         let len = buffer.len() as u32;
         let buffer = buffer.as_ptr();
         let flags = flags.unwrap_or_default();
@@ -152,7 +208,10 @@ impl Socket {
         let sent = unsafe { socket::send(self.fd, buffer.cast(), len, flags) };
 
         if sent == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(match Self::last_error() {
+                None => io::Error::ConnectionAborted,
+                Some(err) => err.into(),
+            })
         } else {
             Ok(sent as usize)
         }
@@ -163,7 +222,7 @@ impl Socket {
         &self,
         buffer: &[u8],
         to: SocketAddrV4,
-        flags: Option<socket::Flags>,
+        flags: Option<Flags>,
     ) -> io::Result<usize> {
         let len = buffer.len() as u32;
         let buffer = buffer.as_ptr();
@@ -175,7 +234,9 @@ impl Socket {
         let sent = unsafe { socket::sendto(self.fd, buffer.cast(), len, flags, &addr, addrlen) };
 
         if sent == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
         } else {
             Ok(sent as usize)
         }
@@ -183,29 +244,87 @@ impl Socket {
 
     #[inline]
     pub fn peer(&self) -> io::Result<SocketAddrV4> {
-        let mut addr = socket::Address::default();
-        let addrlen = size_of_val(&addr);
+        let mut addr = std::mem::MaybeUninit::zeroed();
+        let mut addrlen = size_of_val(&addr);
 
-        let x = unsafe { socket::get_peername(self.fd, &mut addr, addrlen) };
+        let x = unsafe { socket::get_peername(self.fd, addr.as_mut_ptr(), &mut addrlen) };
+        debug_assert_eq!(addrlen, size_of_val(&addr));
 
         if x == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
         } else {
+            let addr = unsafe { addr.assume_init() };
             Ok(SocketAddrV4::new(addr.address.into(), addr.port))
         }
     }
 
     #[inline]
-    pub fn address(&self) -> io::Result<SocketAddrV4> {
-        let mut addr = socket::Address::default();
-        let addrlen = size_of_val(&addr);
+    pub fn local(&self) -> io::Result<SocketAddrV4> {
+        let mut addr = std::mem::MaybeUninit::zeroed();
+        let mut addrlen = size_of_val(&addr);
 
-        let x = unsafe { socket::get_sockname(self.fd, &mut addr, addrlen) };
+        let x = unsafe { socket::get_sockname(self.fd, addr.as_mut_ptr(), &mut addrlen) };
+        debug_assert_eq!(addrlen, size_of_val(&addr));
 
         if x == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
         } else {
+            let addr = unsafe { addr.assume_init() };
             Ok(SocketAddrV4::new(addr.address.into(), addr.port))
+        }
+    }
+
+    #[inline]
+    pub fn set_options<T: Copy>(
+        &self,
+        level: socket::Level,
+        option: socket::Options,
+        value: T,
+    ) -> io::Result<()> {
+        let opt = &value as *const T;
+        let optlen = size_of_val(&value);
+
+        let x = unsafe { socket::setsockopt(self.fd, level, option, opt.cast(), optlen) };
+
+        if x == -1 {
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline]
+    pub fn get_options<T: Copy + Default>(
+        &self,
+        level: socket::Level,
+        option: socket::Options,
+    ) -> io::Result<T> {
+        let mut opt = T::default();
+        let mut optlen = size_of_val(&opt);
+
+        let x = unsafe {
+            socket::getsockopt(
+                self.fd,
+                level,
+                option,
+                &mut opt as *mut T as *mut _,
+                &mut optlen,
+            )
+        };
+        debug_assert_eq!(optlen, size_of_val(&opt));
+
+        if x == -1 {
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
+        } else {
+            Ok(opt)
         }
     }
 
@@ -214,18 +333,9 @@ impl Socket {
         let x = unsafe { socket::shutdown(self.fd, how) };
 
         if x == -1 {
-            Err(unsafe { socket::last_error() }.into())
-        } else {
-            Ok(())
-        }
-    }
-
-    #[inline]
-    fn close(&self) -> io::Result<()> {
-        let x = unsafe { socket::close(self.fd) };
-
-        if x == -1 {
-            Err(unsafe { socket::last_error() }.into())
+            Err(Self::last_error()
+                .expect("Error does not reflect failed operation")
+                .into())
         } else {
             Ok(())
         }
@@ -234,8 +344,7 @@ impl Socket {
 
 impl Drop for Socket {
     fn drop(&mut self) {
-        let _ = self.shutdown(socket::Shutdown::ReadWrite);
-        let _ = self.close();
+        unsafe { socket::close(self.fd) };
     }
 }
 

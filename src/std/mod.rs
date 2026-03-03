@@ -20,6 +20,7 @@ pub use core::ops;
 pub use core::option;
 pub use core::pin;
 pub use core::ptr;
+pub use core::result;
 
 pub use alloc_crate::alloc;
 pub use alloc_crate::borrow;
@@ -29,6 +30,10 @@ pub use alloc_crate::slice;
 pub use alloc_crate::str;
 pub use alloc_crate::string;
 pub use alloc_crate::vec;
+
+pub mod io {
+    pub use crate::io::*;
+}
 
 pub mod ffi {
 
@@ -53,7 +58,11 @@ pub mod fmt {
 }
 
 pub mod net {
-    pub use crate::net::socket::ToSocketAddrs;
+    pub use crate::net::{
+        socket_addr::ToSocketAddrs,
+        tcp::{Incoming, IntoIncoming, TcpListener, TcpStream},
+        udp::UdpSocket,
+    };
     pub use core::net::*;
 }
 
