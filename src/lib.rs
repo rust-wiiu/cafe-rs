@@ -17,6 +17,7 @@ pub mod alloc;
 pub mod datetime;
 pub mod gamepad;
 pub mod graphics;
+pub mod io;
 pub mod mem;
 pub mod net;
 pub mod process;
