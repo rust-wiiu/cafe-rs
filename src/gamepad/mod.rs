@@ -33,19 +33,23 @@
 
 use crate::prelude::*;
 
-use crate::rrc::{Resource, Rrc};
+// use crate::rrc::{Resource, Rrc};
 use bitflags::bitflags;
+use cafe_sys::{
+    padscore::{kpad, wpad},
+    vpad,
+};
 
-static PADS: Rrc = Rrc::new(
-    || unsafe {
-        // sys::vpad::init();
-        sys::padscore::kpad::init();
-    },
-    || unsafe {
-        // sys::vpad::deinit();
-        sys::padscore::kpad::deinit();
-    },
-);
+// static PADS: Rrc = Rrc::new(
+//     || unsafe {
+//         // sys::vpad::init();
+//         sys::padscore::kpad::init();
+//     },
+//     || unsafe {
+//         // sys::vpad::deinit();
+//         sys::padscore::kpad::deinit();
+//     },
+// );
 
 bitflags! {
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -255,40 +259,40 @@ impl From<sys::padscore::kpad::Vec2> for Joystick {
     }
 }
 
-pub struct GamepadsConfig<P, G, T>(core::marker::PhantomData<(P, G, T)>);
+// pub struct GamepadsConfig<P, G, T>(core::marker::PhantomData<(P, G, T)>);
 
-impl<P, G, T> GamepadsConfig<P, G, T> {
-    const fn new() -> Self {
-        Self(core::marker::PhantomData)
-    }
+// impl<P, G, T> GamepadsConfig<P, G, T> {
+//     const fn new() -> Self {
+//         Self(core::marker::PhantomData)
+//     }
 
-    /// Wiimotes are enabled by default.
-    pub fn wiimote(self, enabled: bool) -> Self {
-        unsafe { sys::padscore::wpad::enable_wiimote(enabled) }
-        self
-    }
+//     /// Wiimotes are enabled by default.
+//     pub fn wiimote(self, enabled: bool) -> Self {
+//         unsafe { sys::padscore::wpad::enable_wiimote(enabled) }
+//         self
+//     }
 
-    /// URCC (Wii U Pro Controller) are disabled by default.
-    pub fn urcc(self, enabled: bool) -> Self {
-        unsafe { sys::padscore::wpad::enable_urcc(enabled) }
-        self
-    }
+//     /// URCC (Wii U Pro Controller) are disabled by default.
+//     pub fn urcc(self, enabled: bool) -> Self {
+//         unsafe { sys::padscore::wpad::enable_urcc(enabled) }
+//         self
+//     }
 
-    /// WBC (Wii U Balance Board) is disabled by default.
-    pub fn wbc(self, enabled: bool) -> Self {
-        unsafe { sys::padscore::wpad::enable_wbc(enabled) }
-        self
-    }
+//     /// WBC (Wii U Balance Board) is disabled by default.
+//     pub fn wbc(self, enabled: bool) -> Self {
+//         unsafe { sys::padscore::wpad::enable_wbc(enabled) }
+//         self
+//     }
 
-    pub fn init(self) -> Gamepads<P, G, T>
-    where
-        P: Pointer,
-        G: Gyro,
-        T: Touch,
-    {
-        <Gamepads<P, G, T> as Default>::default()
-    }
-}
+//     pub fn init(self) -> Gamepads<P, G, T>
+//     where
+//         P: Pointer,
+//         G: Gyro,
+//         T: Touch,
+//     {
+//         <Gamepads<P, G, T> as Default>::default()
+//     }
+// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Port {
@@ -300,6 +304,61 @@ pub enum Port {
     P5,
     P6,
     DRC,
+}
+
+impl TryFrom<vpad::Channel> for Port {
+    type Error = vpad::Channel;
+
+    fn try_from(value: vpad::Channel) -> Result<Self, Self::Error> {
+        match value {
+            vpad::Channel::C0 => Ok(Port::DRC),
+            vpad::Channel::C1 => Err(value),
+        }
+    }
+}
+
+impl TryInto<vpad::Channel> for Port {
+    type Error = Self;
+    fn try_into(self) -> Result<vpad::Channel, Self::Error> {
+        match self {
+            Self::DRC => Ok(vpad::Channel::C0),
+            _ => Err(self),
+        }
+    }
+}
+
+impl TryFrom<wpad::Channel> for Port {
+    type Error = wpad::Channel;
+
+    fn try_from(value: wpad::Channel) -> Result<Self, Self::Error> {
+        match value {
+            wpad::Channel::C0 => Ok(Port::P0),
+            wpad::Channel::C1 => Ok(Port::P1),
+            wpad::Channel::C2 => Ok(Port::P2),
+            wpad::Channel::C3 => Ok(Port::P3),
+            wpad::Channel::C4 => Ok(Port::P4),
+            wpad::Channel::C5 => Ok(Port::P5),
+            wpad::Channel::C6 => Ok(Port::P6),
+            _ => Err(value),
+        }
+    }
+}
+
+impl TryInto<wpad::Channel> for Port {
+    type Error = Self;
+
+    fn try_into(self) -> Result<wpad::Channel, Self::Error> {
+        match self {
+            Port::P0 => Ok(wpad::Channel::C0),
+            Port::P1 => Ok(wpad::Channel::C1),
+            Port::P2 => Ok(wpad::Channel::C2),
+            Port::P3 => Ok(wpad::Channel::C3),
+            Port::P4 => Ok(wpad::Channel::C4),
+            Port::P5 => Ok(wpad::Channel::C5),
+            Port::P6 => Ok(wpad::Channel::C6),
+            _ => Err(self),
+        }
+    }
 }
 
 pub trait Pointer: Debug + Clone + PartialEq {
@@ -587,216 +646,278 @@ impl<P: Pointer, G: Gyro, T: Touch> From<sys::padscore::kpad::Status> for Input<
     }
 }
 
-/// Manages the state of connected gamepads and provides methods to query their input. `IntoIterator` will yield the port and input of all currently connected gamepads. The state of the gamepads is only updated when [poll][Gamepads::poll] is called, allowing for more control over when input is captured. The systems expects [poll][Gamepads::poll] to be called on a regular basis (at best every frame).
-///
-/// # Example
-///
-/// ```
-/// # use cafe_rs::prelude::*;
-/// use cafe::gamepad::{Gamepads, Port};
-///
-/// let mut gamepads = Gamepads::default();
-///
-/// gamepads.poll();
-///
-/// for (port, input) in &gamepads {}
-///
-/// let input = gamepads.port(Port::DRC)?;
-/// ```
-pub struct Gamepads<Pointer = (), Gyro = (), Touch = ()> {
-    inputs: [(Port, Option<Input<Pointer, Gyro, Touch>>); 8],
-    _resource: Resource,
-}
-
-impl<P: Pointer, G: Gyro, T: Touch> Default for Gamepads<P, G, T> {
-    fn default() -> Self {
-        Self {
-            inputs: [
-                (Port::P0, None),
-                (Port::P1, None),
-                (Port::P2, None),
-                (Port::P3, None),
-                (Port::P4, None),
-                (Port::P5, None),
-                (Port::P6, None),
-                (Port::DRC, None),
-            ],
-            _resource: PADS.acquire(),
-        }
+pub fn init(wiimote: bool, urcc: bool, wbc: bool) {
+    unsafe {
+        wpad::enable_wiimote(wiimote);
+        wpad::enable_wbc(urcc);
+        wpad::enable_wbc(wbc);
+        kpad::init();
+        // vpad::init();
     }
 }
 
-impl Gamepads {
-    /// Use default gamepad types for the application.
-    ///
-    /// To modify which gamepads can be used use [config][Gamepad::config].
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use cafe_rs::prelude::*;
-    /// use cafe::gamepad::Gamepads;
-    ///
-    /// let mut gamepads = Gamepads::default();
-    /// ```
-    pub fn default() -> Self {
-        <Self as Default>::default()
+pub fn deinit() {
+    unsafe {
+        kpad::deinit();
+        // vpad::deinit();
     }
 }
 
-impl<P: Pointer, G: Gyro, T: Touch> Gamepads<P, G, T> {
-    /// Enable and disabled certain gamepad types for the application.
-    ///
-    /// To use the default configuration use [default][Gamepads::default].
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use cafe_rs::prelude::*;
-    /// use cafe::gamepad::Gamepads;
-    ///
-    /// let mut gamepads = Gamepads::<()>::config().urcc(true).init();
-    /// ```
-    pub fn config() -> GamepadsConfig<P, G, T> {
-        GamepadsConfig::new()
-    }
+pub fn poll(port: Port) -> Result<Input, ()> {
+    poll_with::<1, (), (), ()>(port).map(|[e]| e)
+}
 
-    /// Returns the input of a single port from cache.
-    pub fn port(&self, port: Port) -> Option<&Input<P, G, T>> {
-        match port {
-            Port::P0 => self.inputs[0].1.as_ref(),
-            Port::P1 => self.inputs[1].1.as_ref(),
-            Port::P2 => self.inputs[2].1.as_ref(),
-            Port::P3 => self.inputs[3].1.as_ref(),
-            Port::P4 => self.inputs[4].1.as_ref(),
-            Port::P5 => self.inputs[5].1.as_ref(),
-            Port::P6 => self.inputs[6].1.as_ref(),
-            Port::DRC => self.inputs[7].1.as_ref(),
-        }
-    }
+pub fn poll_with<const N: usize, P: Pointer, G: Gyro, T: Touch>(
+    port: Port,
+) -> Result<[Input<P, G, T>; N], ()> {
+    match port {
+        Port::DRC => {
+            let mut inputs = std::mem::MaybeUninit::<[vpad::Status; N]>::zeroed();
+            let mut error = sys::vpad::Error::Success;
 
-    /// Updates the interal cache with current input states.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use cafe_rs::prelude::*;
-    /// use cafe::gamepad::Gamepads;
-    ///
-    /// let mut gamepads = Gamepads::default;
-    ///
-    /// gamepads.poll();
-    ///
-    /// for (port, input) in gamepads.poll() {}
-    /// ```
-    pub fn poll(&mut self) -> &Self {
-        for (port, input) in &mut self.inputs {
-            match port {
-                Port::DRC => {
-                    let mut status = std::mem::MaybeUninit::zeroed();
-                    let mut error = sys::vpad::Error::Success;
+            let n = unsafe {
+                vpad::poll(
+                    vpad::Channel::C0,
+                    inputs.as_mut_ptr().cast(),
+                    N as u32,
+                    &mut error,
+                )
+            };
 
-                    let n = unsafe {
-                        sys::vpad::poll(sys::vpad::Channel::C0, status.as_mut_ptr(), 1, &mut error)
-                    };
-
-                    if n == 1 && error == sys::vpad::Error::Success {
-                        *input = Some(Input::from(unsafe { status.assume_init() }));
-                    } else if error == sys::vpad::Error::NoSamples {
-                    } else {
-                        *input = None;
-                    }
-                }
-                _ => {
-                    let channel = match port {
-                        Port::P0 => sys::padscore::wpad::Channel::C0,
-                        Port::P1 => sys::padscore::wpad::Channel::C1,
-                        Port::P2 => sys::padscore::wpad::Channel::C2,
-                        Port::P3 => sys::padscore::wpad::Channel::C3,
-                        Port::P4 => sys::padscore::wpad::Channel::C4,
-                        Port::P5 => sys::padscore::wpad::Channel::C5,
-                        Port::P6 => sys::padscore::wpad::Channel::C6,
-                        Port::DRC => unreachable!(),
-                    };
-
-                    let mut status = std::mem::MaybeUninit::zeroed();
-                    let mut error = sys::padscore::kpad::Error::Ok;
-
-                    let n = unsafe {
-                        sys::padscore::kpad::poll(channel, status.as_mut_ptr(), 1, &mut error)
-                    };
-
-                    if n == 1 && error == sys::padscore::kpad::Error::Ok {
-                        *input = Some(Input::from(unsafe { status.assume_init() }));
-                    } else if error == sys::padscore::kpad::Error::NoSamples {
-                    } else {
-                        *input = None;
-                    }
-                }
+            if n as usize == N && error == vpad::Error::Success {
+                Ok(unsafe { inputs.assume_init() }.map(Input::from))
+            } else {
+                Err(()) // convert error into gamepad::Error
             }
         }
+        port => {
+            let channel = port.try_into().unwrap();
 
-        self
-    }
+            let mut inputs = std::mem::MaybeUninit::<[kpad::Status; N]>::zeroed();
+            let mut error = kpad::Error::Ok;
 
-    /// Checks if a button is held on any connected gamepad.
-    pub fn is_held(&self, button: Button) -> bool {
-        self.inputs
-            .iter()
-            .any(|(_, input)| input.as_ref().map_or(false, |input| input.is_held(button)))
-    }
+            let n =
+                unsafe { kpad::poll(channel, inputs.as_mut_ptr().cast(), N as u32, &mut error) };
 
-    /// Checks if a button is triggered on any connected gamepad.
-    pub fn is_triggered(&self, button: Button) -> bool {
-        self.inputs.iter().any(|(_, input)| {
-            input
-                .as_ref()
-                .map_or(false, |input| input.is_triggered(button))
-        })
-    }
-
-    /// Checks if a button is released on any connected gamepad.
-    pub fn is_released(&self, button: Button) -> bool {
-        self.inputs.iter().any(|(_, input)| {
-            input
-                .as_ref()
-                .map_or(false, |input| input.is_released(button))
-        })
-    }
-
-    /// Checks if a button is held on a specific port.
-    pub fn is_held_by(&self, button: Button, port: Port) -> bool {
-        self.port(port)
-            .as_ref()
-            .map_or(false, |input| input.is_held(button))
-    }
-
-    /// Checks if a button is triggered on a specific port.
-    pub fn is_triggered_by(&self, button: Button, port: Port) -> bool {
-        self.port(port)
-            .as_ref()
-            .map_or(false, |input| input.is_triggered(button))
-    }
-
-    /// Checks if a button is released on a specific port.
-    pub fn is_released_by(&self, button: Button, port: Port) -> bool {
-        self.port(port)
-            .as_ref()
-            .map_or(false, |input| input.is_released(button))
+            if n as usize == N && error == kpad::Error::Ok {
+                Ok(unsafe { inputs.assume_init() }.map(Input::from))
+            } else {
+                Err(()) // convert error into gamepad::Error
+            }
+        }
     }
 }
 
-impl<'a, P, G, T> IntoIterator for &'a Gamepads<P, G, T> {
-    type Item = (Port, &'a Input<P, G, T>);
-    type IntoIter = core::iter::FilterMap<
-        core::slice::Iter<'a, (Port, Option<Input<P, G, T>>)>,
-        fn(&(Port, Option<Input<P, G, T>>)) -> Option<(Port, &Input<P, G, T>)>,
-    >;
+// /// Manages the state of connected gamepads and provides methods to query their input. `IntoIterator` will yield the port and input of all currently connected gamepads. The state of the gamepads is only updated when [poll][Gamepads::poll] is called, allowing for more control over when input is captured. The systems expects [poll][Gamepads::poll] to be called on a regular basis (at best every frame).
+// ///
+// /// # Example
+// ///
+// /// ```
+// /// # use cafe_rs::prelude::*;
+// /// use cafe::gamepad::{Gamepads, Port};
+// ///
+// /// let mut gamepads = Gamepads::default();
+// ///
+// /// gamepads.poll();
+// ///
+// /// for (port, input) in &gamepads {}
+// ///
+// /// let input = gamepads.port(Port::DRC)?;
+// /// ```
+// pub struct Gamepads<Pointer = (), Gyro = (), Touch = ()> {
+//     inputs: [(Port, Option<Input<Pointer, Gyro, Touch>>); 8],
+//     _resource: Resource,
+// }
 
-    /// Iterates over all connected gamepads.
-    fn into_iter(self) -> Self::IntoIter {
-        self.inputs
-            .iter()
-            .filter_map(|(port, input)| input.as_ref().map(|input| (*port, input)))
-    }
-}
+// impl<P: Pointer, G: Gyro, T: Touch> Default for Gamepads<P, G, T> {
+//     fn default() -> Self {
+//         Self {
+//             inputs: [
+//                 (Port::P0, None),
+//                 (Port::P1, None),
+//                 (Port::P2, None),
+//                 (Port::P3, None),
+//                 (Port::P4, None),
+//                 (Port::P5, None),
+//                 (Port::P6, None),
+//                 (Port::DRC, None),
+//             ],
+//             _resource: PADS.acquire(),
+//         }
+//     }
+// }
+
+// impl Gamepads {
+//     /// Use default gamepad types for the application.
+//     ///
+//     /// To modify which gamepads can be used use [config][Gamepad::config].
+//     ///
+//     /// # Example
+//     ///
+//     /// ```
+//     /// # use cafe_rs::prelude::*;
+//     /// use cafe::gamepad::Gamepads;
+//     ///
+//     /// let mut gamepads = Gamepads::default();
+//     /// ```
+//     pub fn default() -> Self {
+//         <Self as Default>::default()
+//     }
+// }
+
+// impl<P: Pointer, G: Gyro, T: Touch> Gamepads<P, G, T> {
+//     /// Enable and disabled certain gamepad types for the application.
+//     ///
+//     /// To use the default configuration use [default][Gamepads::default].
+//     ///
+//     /// # Example
+//     ///
+//     /// ```
+//     /// # use cafe_rs::prelude::*;
+//     /// use cafe::gamepad::Gamepads;
+//     ///
+//     /// let mut gamepads = Gamepads::<()>::config().urcc(true).init();
+//     /// ```
+//     pub fn config() -> GamepadsConfig<P, G, T> {
+//         GamepadsConfig::new()
+//     }
+
+//     /// Returns the input of a single port from cache.
+//     pub fn port(&self, port: Port) -> Option<&Input<P, G, T>> {
+//         match port {
+//             Port::P0 => self.inputs[0].1.as_ref(),
+//             Port::P1 => self.inputs[1].1.as_ref(),
+//             Port::P2 => self.inputs[2].1.as_ref(),
+//             Port::P3 => self.inputs[3].1.as_ref(),
+//             Port::P4 => self.inputs[4].1.as_ref(),
+//             Port::P5 => self.inputs[5].1.as_ref(),
+//             Port::P6 => self.inputs[6].1.as_ref(),
+//             Port::DRC => self.inputs[7].1.as_ref(),
+//         }
+//     }
+
+//     /// Updates the interal cache with current input states.
+//     ///
+//     /// # Example
+//     ///
+//     /// ```
+//     /// # use cafe_rs::prelude::*;
+//     /// use cafe::gamepad::Gamepads;
+//     ///
+//     /// let mut gamepads = Gamepads::default;
+//     ///
+//     /// gamepads.poll();
+//     ///
+//     /// for (port, input) in gamepads.poll() {}
+//     /// ```
+//     pub fn poll(&mut self) -> &Self {
+//         for (port, input) in &mut self.inputs {
+//             match port {
+//                 Port::DRC => {
+//                     let mut status = std::mem::MaybeUninit::zeroed();
+//                     let mut error = sys::vpad::Error::Success;
+
+//                     let n = unsafe {
+//                         sys::vpad::poll(sys::vpad::Channel::C0, status.as_mut_ptr(), 1, &mut error)
+//                     };
+
+//                     if n == 1 && error == sys::vpad::Error::Success {
+//                         *input = Some(Input::from(unsafe { status.assume_init() }));
+//                     } else if error == sys::vpad::Error::NoSamples {
+//                     } else {
+//                         *input = None;
+//                     }
+//                 }
+//                 _ => {
+//                     let channel = match port {
+//                         Port::P0 => sys::padscore::wpad::Channel::C0,
+//                         Port::P1 => sys::padscore::wpad::Channel::C1,
+//                         Port::P2 => sys::padscore::wpad::Channel::C2,
+//                         Port::P3 => sys::padscore::wpad::Channel::C3,
+//                         Port::P4 => sys::padscore::wpad::Channel::C4,
+//                         Port::P5 => sys::padscore::wpad::Channel::C5,
+//                         Port::P6 => sys::padscore::wpad::Channel::C6,
+//                         Port::DRC => unreachable!(),
+//                     };
+
+//                     let mut status = std::mem::MaybeUninit::zeroed();
+//                     let mut error = sys::padscore::kpad::Error::Ok;
+
+//                     let n = unsafe {
+//                         sys::padscore::kpad::poll(channel, status.as_mut_ptr(), 1, &mut error)
+//                     };
+
+//                     if n == 1 && error == sys::padscore::kpad::Error::Ok {
+//                         *input = Some(Input::from(unsafe { status.assume_init() }));
+//                     } else if error == sys::padscore::kpad::Error::NoSamples {
+//                     } else {
+//                         *input = None;
+//                     }
+//                 }
+//             }
+//         }
+
+//         self
+//     }
+
+//     /// Checks if a button is held on any connected gamepad.
+//     pub fn is_held(&self, button: Button) -> bool {
+//         self.inputs
+//             .iter()
+//             .any(|(_, input)| input.as_ref().map_or(false, |input| input.is_held(button)))
+//     }
+
+//     /// Checks if a button is triggered on any connected gamepad.
+//     pub fn is_triggered(&self, button: Button) -> bool {
+//         self.inputs.iter().any(|(_, input)| {
+//             input
+//                 .as_ref()
+//                 .map_or(false, |input| input.is_triggered(button))
+//         })
+//     }
+
+//     /// Checks if a button is released on any connected gamepad.
+//     pub fn is_released(&self, button: Button) -> bool {
+//         self.inputs.iter().any(|(_, input)| {
+//             input
+//                 .as_ref()
+//                 .map_or(false, |input| input.is_released(button))
+//         })
+//     }
+
+//     /// Checks if a button is held on a specific port.
+//     pub fn is_held_by(&self, button: Button, port: Port) -> bool {
+//         self.port(port)
+//             .as_ref()
+//             .map_or(false, |input| input.is_held(button))
+//     }
+
+//     /// Checks if a button is triggered on a specific port.
+//     pub fn is_triggered_by(&self, button: Button, port: Port) -> bool {
+//         self.port(port)
+//             .as_ref()
+//             .map_or(false, |input| input.is_triggered(button))
+//     }
+
+//     /// Checks if a button is released on a specific port.
+//     pub fn is_released_by(&self, button: Button, port: Port) -> bool {
+//         self.port(port)
+//             .as_ref()
+//             .map_or(false, |input| input.is_released(button))
+//     }
+// }
+
+// impl<'a, P, G, T> IntoIterator for &'a Gamepads<P, G, T> {
+//     type Item = (Port, &'a Input<P, G, T>);
+//     type IntoIter = core::iter::FilterMap<
+//         core::slice::Iter<'a, (Port, Option<Input<P, G, T>>)>,
+//         fn(&(Port, Option<Input<P, G, T>>)) -> Option<(Port, &Input<P, G, T>)>,
+//     >;
+
+//     /// Iterates over all connected gamepads.
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.inputs
+//             .iter()
+//             .filter_map(|(port, input)| input.as_ref().map(|input| (*port, input)))
+//     }
+// }

@@ -11,7 +11,7 @@ test = false
 bench = false
 
 [features]
-default = []
+default = ["rt", "panic", "alloc"]
 rt = ["dep:cafe-rt"]
 panic = ["cafe-rt?/panic"]
 alloc = ["cafe-rt?/alloc"]
@@ -21,6 +21,7 @@ bitflags = "2.10.0"
 bon = { version = "3.8.2", default-features = false }
 cafe-rt = { path = "../cafe-rt", version = "*", optional = true }
 cafe-sys = { path = "../cafe-sys", version = "*" }
+gfx2 = "0.4.1"
 log = "0.4.29"
 num_enum = { version = "0.7.5", default-features = false }
 thiserror = { version = "2.0.18", default-features = false }

@@ -1,31 +1,40 @@
+use cafe_sys::gx2;
+
 use crate::prelude::*;
+use std::marker::PhantomData;
 
-use cafe::graphics::buffer::{
-    AntiAliasing, ColorBuffer, DepthBuffer, Dimension, Format, FrameBuffer, ResourceFlags, Surface,
-};
-use std::{cell::UnsafeCell, ffi::c_void, ptr};
-use sys::{
-    gx2,
-    gx2::display::{
-        AspectRatio, Buffering, DrcMode, ScanMode, TvMode, aspect_ratio, drc_framebuffer_size,
-        drc_mode, scan_mode, tv_framebuffer_size,
-    },
-    proc_ui,
-};
+use super::buffer::ScanBuffer;
 
-struct SyncUnsafeCell<T>(UnsafeCell<T>);
-unsafe impl<T> Sync for SyncUnsafeCell<T> {}
+pub trait RenderTarget {
+    type Mode;
+    const COLOR_FORMAT: gx2::surface::Format;
+    const DEPTH_FORMAT: gx2::surface::Format;
+    const SCAN_FORMAT: gx2::surface::Format;
+    const BUFFERING: gx2::display::Buffering;
+    const AA: gx2::surface::AntiAliasing;
+    const SCAN_TARGET: gx2::display::ScanTarget;
+
+    fn size() -> (usize, usize);
+    fn mode() -> Self::Mode;
+}
 
 pub struct TV;
+impl RenderTarget for TV {
+    type Mode = gx2::display::TvMode;
+    const COLOR_FORMAT: gx2::surface::Format = gx2::surface::Format::UnormR8G8B8A8;
+    const DEPTH_FORMAT: gx2::surface::Format = gx2::surface::Format::FloatR32;
+    const SCAN_FORMAT: gx2::surface::Format = gx2::surface::Format::UnormR8G8B8A8;
 
-impl TV {
-    /// Width x Height
-    #[inline]
-    pub fn size() -> (usize, usize) {
-        match unsafe { scan_mode() } {
-            ScanMode::NTSC | ScanMode::NTSCp => match unsafe { aspect_ratio() } {
-                AspectRatio::Standard => (854, 480),
-                AspectRatio::Widescreen => (640, 480),
+    const BUFFERING: gx2::display::Buffering = gx2::display::Buffering::Double;
+    const AA: gx2::surface::AntiAliasing = gx2::surface::AntiAliasing::X1;
+    const SCAN_TARGET: gx2::display::ScanTarget = gx2::display::ScanTarget::Tv;
+
+    fn size() -> (usize, usize) {
+        use gx2::display::{AspectRatio, ScanMode};
+        match unsafe { gx2::display::scan_mode() } {
+            ScanMode::NTSC | ScanMode::NTSCp => match unsafe { gx2::display::aspect_ratio() } {
+                AspectRatio::Standard => (640, 480),
+                AspectRatio::Widescreen => (854, 480),
             },
             ScanMode::PAL | ScanMode::HD => (1280, 720),
             ScanMode::FHD | ScanMode::FHDi => (1920, 1080),
@@ -33,257 +42,118 @@ impl TV {
     }
 
     #[inline]
-    pub fn mode() -> TvMode {
-        match unsafe { scan_mode() } {
-            ScanMode::NTSC | ScanMode::NTSCp => match unsafe { aspect_ratio() } {
-                AspectRatio::Standard => TvMode::Wide480,
-                AspectRatio::Widescreen => TvMode::Standard480,
+    fn mode() -> Self::Mode {
+        use gx2::display::{AspectRatio, ScanMode, TvMode};
+        match unsafe { gx2::display::scan_mode() } {
+            ScanMode::NTSC | ScanMode::NTSCp => match unsafe { gx2::display::aspect_ratio() } {
+                AspectRatio::Standard => TvMode::Standard480,
+                AspectRatio::Widescreen => TvMode::Wide480,
             },
             ScanMode::PAL | ScanMode::HD => TvMode::Wide720,
             ScanMode::FHD | ScanMode::FHDi => TvMode::Wide1080,
         }
     }
-
-    #[inline]
-    pub fn enable(enable: bool) {
-        unsafe {
-            gx2::display::enable_tv(enable);
-        }
-    }
-
-    pub fn init() {
-        unsafe {
-            proc_ui::register_callback(
-                proc_ui::Message::Acquire,
-                Some(Self::acquire),
-                ptr::null_mut(),
-                100,
-            );
-
-            proc_ui::register_callback(
-                proc_ui::Message::Release,
-                Some(Self::release),
-                ptr::null_mut(),
-                100,
-            );
-
-            Self::acquire(ptr::null_mut());
-        }
-    }
-
-    unsafe extern "C" fn acquire(_context: *mut c_void) -> u32 {
-        // This currently is modeled after the way its done in WUT.
-        // Im not sure if this can race but I think it can.
-        // I will take another look once the main thing is working.
-
-        let (width, height) = Self::size();
-
-        Self::color_buffer().insert(
-            ColorBuffer::builder()
-                .surface(
-                    Surface::builder()
-                        .flags(
-                            ResourceFlags::ColorBuffer | ResourceFlags::Texture | ResourceFlags::Tv,
-                        )
-                        .dim(Dimension::D2)
-                        .width(width as u32)
-                        .height(height as u32)
-                        .depth(1)
-                        .format(Format::UnormR8G8B8A8)
-                        .aa(AntiAliasing::X1)
-                        .build(),
-                )
-                .build(),
-        );
-
-        Self::depth_buffer().insert(
-            DepthBuffer::builder()
-                .surface(
-                    Surface::builder()
-                        .flags(ResourceFlags::DepthBuffer | ResourceFlags::Texture)
-                        .dim(Dimension::D2)
-                        .width(width as u32)
-                        .height(height as u32)
-                        .depth(1)
-                        .format(Format::UnormR8G8B8A8)
-                        .aa(AntiAliasing::X1)
-                        .build(),
-                )
-                .build(),
-        );
-
-        Self::frame_buffer().insert({
-            let mut _unused = 0;
-            let mut size = 0;
-
-            unsafe {
-                tv_framebuffer_size(
-                    Self::mode(),
-                    Format::UnormR8G8B8A8,
-                    Buffering::Double,
-                    &mut size,
-                    &mut _unused,
-                );
-            }
-
-            FrameBuffer::new(size as usize)
-        });
-
-        0
-    }
-
-    unsafe extern "C" fn release(_context: *mut c_void) -> u32 {
-        let _ = Self::color_buffer().take();
-        let _ = Self::depth_buffer().take();
-        let _ = Self::frame_buffer().take();
-
-        0
-    }
-
-    pub(crate) fn color_buffer() -> &'static mut Option<ColorBuffer> {
-        static BUFFER: SyncUnsafeCell<Option<ColorBuffer>> = SyncUnsafeCell(UnsafeCell::new(None));
-
-        unsafe { &mut (*BUFFER.0.get()) }
-    }
-
-    pub(crate) fn depth_buffer() -> &'static mut Option<DepthBuffer> {
-        static BUFFER: SyncUnsafeCell<Option<DepthBuffer>> = SyncUnsafeCell(UnsafeCell::new(None));
-
-        unsafe { &mut (*BUFFER.0.get()) }
-    }
-
-    pub(crate) fn frame_buffer() -> &'static mut Option<FrameBuffer> {
-        static BUFFER: SyncUnsafeCell<Option<FrameBuffer>> = SyncUnsafeCell(UnsafeCell::new(None));
-
-        unsafe { &mut (*BUFFER.0.get()) }
-    }
 }
 
 pub struct DRC;
+impl RenderTarget for DRC {
+    type Mode = gx2::display::DrcMode;
+    const COLOR_FORMAT: gx2::surface::Format = gx2::surface::Format::UnormR8G8B8A8;
+    const DEPTH_FORMAT: gx2::surface::Format = gx2::surface::Format::FloatR32;
+    const SCAN_FORMAT: gx2::surface::Format = gx2::surface::Format::UnormR8G8B8A8;
 
-impl DRC {
-    /// Width x Height
+    const BUFFERING: gx2::display::Buffering = gx2::display::Buffering::Double;
+    const AA: gx2::surface::AntiAliasing = gx2::surface::AntiAliasing::X1;
+    const SCAN_TARGET: gx2::display::ScanTarget = gx2::display::ScanTarget::Drc;
+
     #[inline]
-    pub fn size() -> (usize, usize) {
+    fn size() -> (usize, usize) {
         (854, 480)
     }
 
     #[inline]
-    pub fn mode() -> DrcMode {
-        unsafe { drc_mode() }
+    fn mode() -> Self::Mode {
+        unsafe { gx2::display::drc_mode() }
     }
+}
 
-    #[inline]
-    pub fn enable(enable: bool) {
+pub struct Display<T: RenderTarget> {
+    _scan: ScanBuffer,
+    _marker: PhantomData<T>,
+}
+
+impl Display<TV> {
+    pub fn tv() -> Self {
+        let mut size = 0;
+        let mut scale_needed = 0;
         unsafe {
-            gx2::display::enable_drc(enable);
+            gx2::display::tv_framebuffer_size(
+                TV::mode(),
+                TV::SCAN_FORMAT,
+                TV::BUFFERING,
+                &mut size,
+                &mut scale_needed,
+            );
+        };
+        debug_assert_ne!(size, 0);
+
+        let scan = ScanBuffer::with_capacity(size as usize);
+
+        unsafe {
+            gx2::display::set_tv_buffer(
+                scan.as_raw().ptr,
+                scan.len() as u32,
+                TV::mode(),
+                TV::SCAN_FORMAT,
+                TV::BUFFERING,
+            );
+        }
+
+        Self {
+            _scan: scan,
+            _marker: PhantomData,
         }
     }
+}
 
-    pub fn init() {
+impl Display<DRC> {
+    pub fn drc() -> Self {
+        let mut size = 0;
+        let mut scale_needed = 0;
         unsafe {
-            proc_ui::register_callback(
-                proc_ui::Message::Acquire,
-                Some(Self::acquire),
-                ptr::null_mut(),
-                100,
+            gx2::display::drc_framebuffer_size(
+                DRC::mode(),
+                DRC::SCAN_FORMAT,
+                DRC::BUFFERING,
+                &mut size,
+                &mut scale_needed,
             );
+        };
+        debug_assert_ne!(size, 0);
 
-            proc_ui::register_callback(
-                proc_ui::Message::Release,
-                Some(Self::release),
-                ptr::null_mut(),
-                100,
+        let scan = ScanBuffer::with_capacity(size as usize);
+
+        unsafe {
+            gx2::display::set_drc_buffer(
+                scan.as_raw().ptr,
+                scan.len() as u32,
+                DRC::mode(),
+                DRC::SCAN_FORMAT,
+                DRC::BUFFERING,
             );
+        }
 
-            Self::acquire(ptr::null_mut());
+        Self {
+            _scan: scan,
+            _marker: PhantomData,
         }
     }
+}
 
-    unsafe extern "C" fn acquire(_context: *mut c_void) -> u32 {
-        // This currently is modeled after the way its done in WUT.
-        // Im not sure if this can race but I think it can.
-        // I will take another look once the main thing is working.
-
-        let (width, height) = Self::size();
-
-        Self::color_buffer().insert(
-            ColorBuffer::builder()
-                .surface(
-                    Surface::builder()
-                        .flags(
-                            ResourceFlags::ColorBuffer | ResourceFlags::Texture | ResourceFlags::Tv,
-                        )
-                        .dim(Dimension::D2)
-                        .width(width as u32)
-                        .height(height as u32)
-                        .depth(1)
-                        .format(Format::UnormR8G8B8A8)
-                        .aa(AntiAliasing::X1)
-                        .build(),
-                )
-                .build(),
-        );
-
-        Self::depth_buffer().insert(
-            DepthBuffer::builder()
-                .surface(
-                    Surface::builder()
-                        .flags(ResourceFlags::DepthBuffer | ResourceFlags::Texture)
-                        .dim(Dimension::D2)
-                        .width(width as u32)
-                        .height(height as u32)
-                        .depth(1)
-                        .format(Format::UnormR8G8B8A8)
-                        .aa(AntiAliasing::X1)
-                        .build(),
-                )
-                .build(),
-        );
-
-        Self::frame_buffer().insert({
-            let mut _unused = 0;
-            let mut size = 0;
-
-            unsafe {
-                drc_framebuffer_size(
-                    Self::mode(),
-                    Format::UnormR8G8B8A8,
-                    Buffering::Double,
-                    &mut size,
-                    &mut _unused,
-                );
-            }
-
-            FrameBuffer::new(size as usize)
-        });
-
-        0
-    }
-
-    unsafe extern "C" fn release(_context: *mut c_void) -> u32 {
-        let _ = Self::color_buffer().take();
-        let _ = Self::depth_buffer().take();
-        let _ = Self::frame_buffer().take();
-
-        0
-    }
-
-    pub(crate) fn color_buffer() -> &'static mut Option<ColorBuffer> {
-        static BUFFER: SyncUnsafeCell<Option<ColorBuffer>> = SyncUnsafeCell(UnsafeCell::new(None));
-
-        unsafe { &mut (*BUFFER.0.get()) }
-    }
-
-    pub(crate) fn depth_buffer() -> &'static mut Option<DepthBuffer> {
-        static BUFFER: SyncUnsafeCell<Option<DepthBuffer>> = SyncUnsafeCell(UnsafeCell::new(None));
-
-        unsafe { &mut (*BUFFER.0.get()) }
-    }
-
-    pub(crate) fn frame_buffer() -> &'static mut Option<FrameBuffer> {
-        static BUFFER: SyncUnsafeCell<Option<FrameBuffer>> = SyncUnsafeCell(UnsafeCell::new(None));
-
-        unsafe { &mut (*BUFFER.0.get()) }
+#[inline]
+pub fn request_swap() {
+    unsafe {
+        gx2::display::swap_scan_buffers();
+        gx2::display::draw_done();
     }
 }

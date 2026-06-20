@@ -2,6 +2,7 @@
 
 use crate::prelude::*;
 
+use core::{cell::UnsafeCell, mem::MaybeUninit};
 use std::{
     ffi::c_void,
     marker::PhantomData,
@@ -10,70 +11,103 @@ use std::{
 };
 use sys::{coreinit, proc_ui};
 
-static MAIN_CORE: AtomicU32 = AtomicU32::new(0);
-static RUNNING: AtomicBool = AtomicBool::new(false);
-// static HOMEBREW_LAUNCHER: AtomicBool = AtomicBool::new(false);
+// static MAIN_CORE: AtomicU32 = AtomicU32::new(0);
+// static RUNNING: AtomicBool = AtomicBool::new(false);
+// // static HOMEBREW_LAUNCHER: AtomicBool = AtomicBool::new(false);
 
-// PhantomData to impl !Send
-pub struct Process(PhantomData<*const ()>);
+// // PhantomData to impl !Send
+// pub struct Process(PhantomData<*const ()>);
 
-impl Process {
-    pub fn new() -> Self {
-        if RUNNING.swap(true, Ordering::Relaxed) || unsafe { proc_ui::is_running() } != 0 {
-            panic!("Process::new can only be called once.")
-        }
+// impl Process {
+//     pub fn new() -> Self {
+//         if RUNNING.swap(true, Ordering::Relaxed) || unsafe { proc_ui::is_running() } != 0 {
+//             panic!("Process::new can only be called once.")
+//         }
 
-        MAIN_CORE.store(cafe::thread::core().into(), Ordering::Relaxed);
+//         MAIN_CORE.store(cafe::thread::core().into(), Ordering::Relaxed);
 
-        unsafe extern "C" fn save_callback(_context: *mut c_void) -> u32 {
-            unsafe {
-                coreinit::foreground::ready_to_release();
+//         unsafe extern "C" fn save_callback(_context: *mut c_void) -> u32 {
+//             unsafe {
+//                 coreinit::foreground::ready_to_release();
+//             }
+
+//             0
+//         }
+
+//         unsafe {
+//             proc_ui::init_ex(save_callback, ptr::null_mut());
+//         }
+
+//         Self(PhantomData)
+//     }
+
+//     pub fn running(&self) -> bool {
+//         let msg = unsafe { proc_ui::process_messages(1) };
+
+//         match msg {
+//             proc_ui::Status::Exit => RUNNING.store(false, Ordering::Release),
+//             proc_ui::Status::Releasing => unsafe { proc_ui::drawing_done() },
+//             _ => (),
+//         }
+
+//         RUNNING.load(Ordering::Acquire)
+//     }
+// }
+
+// impl Drop for Process {
+//     fn drop(&mut self) {
+//         unsafe {
+//             proc_ui::shutdown();
+//         }
+//         RUNNING.store(false, Ordering::Relaxed);
+//     }
+// }
+
+// /// Can be used to check in arbitrary threads if the main thread / process is still running.
+// ///
+// /// This does not handle the system calls to release the foreground. [Process::running] must be called within the main thread for ProcUI to work.
+// #[inline]
+// pub fn running() -> bool {
+//     RUNNING.load(Ordering::Acquire)
+// }
+
+// /// Returns the core the main thread is running on. This is set when [Process::new] is called.
+// #[inline]
+// pub fn main_core() -> u32 {
+//     MAIN_CORE.load(Ordering::Relaxed)
+// }
+
+/// Calling this function multiple times is UB.
+pub fn init<F: FnMut() -> Result<(), ()> + 'static>(mut callback: F) {
+    unsafe extern "C" fn trampoline<F: FnMut() -> Result<(), ()>>(f: *mut c_void) -> u32 {
+        let callback = unsafe { &mut *(f as *mut F) };
+
+        match callback() {
+            Ok(_) => {
+                unsafe {
+                    coreinit::foreground::ready_to_release();
+                }
+                0
             }
-
-            0
+            Err(_) => 1,
         }
-
-        unsafe {
-            proc_ui::init_ex(save_callback, ptr::null_mut());
-        }
-
-        Self(PhantomData)
     }
 
-    pub fn running(&self) -> bool {
-        let msg = unsafe { proc_ui::process_messages(1) };
-
-        match msg {
-            proc_ui::Status::Exit => RUNNING.store(false, Ordering::Release),
-            proc_ui::Status::Releasing => unsafe { proc_ui::drawing_done() },
-            _ => (),
-        }
-
-        RUNNING.load(Ordering::Acquire)
+    unsafe {
+        proc_ui::init_ex(trampoline::<F>, &mut callback as *mut F as *mut _);
     }
 }
 
-impl Drop for Process {
-    fn drop(&mut self) {
-        unsafe {
-            proc_ui::shutdown();
-        }
-        RUNNING.store(false, Ordering::Relaxed);
+pub fn deinit() {
+    unsafe {
+        proc_ui::shutdown();
     }
 }
 
-/// Can be used to check in arbitrary threads if the main thread / process is still running.
-///
-/// This does not handle the system calls to release the foreground. [Process::running] must be called within the main thread for ProcUI to work.
-#[inline]
-pub fn running() -> bool {
-    RUNNING.load(Ordering::Acquire)
-}
+pub use proc_ui::Status;
 
-/// Returns the core the main thread is running on. This is set when [Process::new] is called.
-#[inline]
-pub fn main_core() -> u32 {
-    MAIN_CORE.load(Ordering::Relaxed)
+pub fn handle_system_messages() -> Status {
+    unsafe { proc_ui::process_messages(1) }
 }
 
 /// Every application has an associated title ID.
@@ -87,6 +121,11 @@ impl TitleID {
     pub const MII_MAKER_JPN: Self = Self(0x00050010_1004A000);
     pub const MII_MAKER_USA: Self = Self(0x00050010_1004A100);
     pub const MII_MAKER_EUR: Self = Self(0x00050010_1004A200);
+
+    #[inline]
+    pub fn get() -> Self {
+        Self(unsafe { coreinit::system::title_id() })
+    }
 }
 
 impl From<u64> for TitleID {
@@ -105,9 +144,4 @@ impl std::fmt::Display for TitleID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:08X}-{:08X}", self.0 >> 32, self.0 & 0xFFFFFFFF)
     }
-}
-
-#[inline]
-pub fn title_id() -> TitleID {
-    TitleID(unsafe { coreinit::system::title_id() })
 }
