@@ -15,6 +15,10 @@ pub enum Error {
     OutOfMemory(Layout, mem::Arena),
     #[error("The base handle for {0:?} returned a null-pointer")]
     BaseHandleUnset(mem::Arena),
+    #[error("Creation of heap snapshot failed: {0:?} ")]
+    SnapshotCreationFailed(mem::Arena),
+    #[error("Restoration of heap snapshot failed: {0:?}")]
+    SnapshotRestoreFailed(mem::Arena),
 }
 
 /// 32 MiB 1T SRAM (Graphics buffers)
@@ -97,13 +101,11 @@ impl Allocator for FG {
     const MEM: mem::Arena = mem::Arena::Foreground;
 }
 
-/*
 #[derive(Debug)]
 pub struct Snapshot<MEM: Allocator> {
     tag: NonZeroU32,
     _marker: PhantomData<MEM>,
 }
-
 
 /// Records the current memory use state of a frame heap. It can be restored to the recorded state by calling [restore].
 ///
@@ -115,7 +117,7 @@ pub fn record<MEM: Allocator>(tag: NonZeroU32) -> Result<Snapshot<MEM>, Error> {
     let success = unsafe { mem::record_state_frm_heap(handle.as_ptr(), tag.get()) } != 0;
 
     match success {
-        false => Err(()),
+        false => Err(Error::SnapshotCreationFailed(MEM::MEM)),
         true => Ok(Snapshot {
             tag,
             _marker: PhantomData,
@@ -133,14 +135,13 @@ pub fn record<MEM: Allocator>(tag: NonZeroU32) -> Result<Snapshot<MEM>, Error> {
 /// * at the beginning and end of a scope
 /// * in the constructor and destructor of an object
 ///
-pub unsafe fn restore<MEM: Allocator>(snapshot: Snapshot<MEM>) -> Result<(), ()> {
+pub unsafe fn restore<MEM: Allocator>(snapshot: Snapshot<MEM>) -> Result<(), Error> {
     let handle = MEM::base_handle()?;
 
     let success = unsafe { mem::free_state_frm_heap(handle.as_ptr(), snapshot.tag.get()) } != 0;
 
     match success {
-        false => Err(()),
+        false => Err(Error::SnapshotRestoreFailed(MEM::MEM)),
         true => Ok(()),
     }
 }
-*/

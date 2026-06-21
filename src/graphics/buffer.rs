@@ -27,11 +27,26 @@ impl<U: Usage, T> Buffer<U, T> {
     }
 }
 
-impl<U: Usage, T: Copy, F: AsRef<[T]>> From<F> for Buffer<U, T> {
-    fn from(value: F) -> Self {
-        let bytes = value.as_ref();
-        let buffer = Self::with_capacity(bytes.len());
-        buffer.lock().copy_from_slice(bytes);
+impl<U: Usage, T> From<Vec<T>> for Buffer<U, T> {
+    fn from(mut value: Vec<T>) -> Self {
+        let buffer = Self::with_capacity(value.len());
+        buffer.lock().swap_with_slice(value.as_mut());
+        buffer
+    }
+}
+
+impl<U: Usage, T, const N: usize> From<[T; N]> for Buffer<U, T> {
+    fn from(mut value: [T; N]) -> Self {
+        let buffer = Self::with_capacity(N);
+        buffer.lock().swap_with_slice(value.as_mut());
+        buffer
+    }
+}
+
+impl<U: Usage, T: Copy> From<&[T]> for Buffer<U, T> {
+    fn from(value: &[T]) -> Self {
+        let buffer = Self::with_capacity(value.len());
+        buffer.lock().copy_from_slice(value);
         buffer
     }
 }
@@ -40,12 +55,6 @@ impl<U, T> Buffer<U, T> {
     pub fn len(&self) -> usize {
         self.raw.element_count as usize
     }
-
-    // pub fn invalidate(&self) {
-    //     unsafe {
-    //         gx2::mem::invalidate_ex(self.as_raw(), gx2::surface::ResourceFlags::empty());
-    //     }
-    // }
 
     pub fn as_raw(&self) -> &gx2::mem::Buffer {
         &self.raw
@@ -69,6 +78,12 @@ impl<U, T> Buffer<U, T> {
 
     pub fn lock(&self) -> BufferLock<'_, U, T> {
         BufferLock::new(self)
+    }
+
+    pub fn invalidate(&self) {
+        unsafe {
+            gx2::mem::invalidate_buffer(self.as_raw(), gx2::surface::ResourceFlags::empty());
+        }
     }
 }
 

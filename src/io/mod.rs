@@ -153,7 +153,7 @@ impl From<sys::nsys::net::socket::Error> for Error {
 }
 
 impl From<core::net::AddrParseError> for Error {
-    fn from(value: core::net::AddrParseError) -> Self {
+    fn from(_: core::net::AddrParseError) -> Self {
         Self::InvalidInput
     }
 }

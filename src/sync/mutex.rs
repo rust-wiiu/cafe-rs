@@ -1,10 +1,11 @@
-use crate::std::{
+use super::LockError;
+use crate::prelude::*;
+use std::{
     cell::UnsafeCell,
     fmt,
     ops::{Deref, DerefMut},
 };
-use crate::sys::{coreinit, ffi};
-use crate::{Error, Result};
+use sys::{coreinit, ffi};
 
 pub struct Mutex<T> {
     data: UnsafeCell<T>,
@@ -26,7 +27,7 @@ impl<T> Mutex<T> {
     }
 
     /// Acquires a mutex, blocking the current thread until it is able to do so.
-    pub fn lock(&self) -> Result<MutexGuard<'_, T>> {
+    pub fn lock(&self) -> Result<MutexGuard<'_, T>, LockError> {
         unsafe {
             coreinit::mutex::lock(self.mutex.get());
         }
@@ -34,11 +35,11 @@ impl<T> Mutex<T> {
     }
 
     /// Attempts to acquire this lock.
-    pub fn try_lock(&self) -> Result<MutexGuard<'_, T>> {
+    pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, LockError> {
         let locked = unsafe { coreinit::mutex::try_lock(self.mutex.get()) };
         match locked {
             ffi::TRUE => Ok(MutexGuard::new(self)),
-            ffi::FALSE => Err(Error::Any("already locked")),
+            ffi::FALSE => Err(LockError::AlreadyLocked),
             _ => unreachable!(),
         }
     }

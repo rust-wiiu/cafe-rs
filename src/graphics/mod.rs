@@ -25,13 +25,13 @@ pub fn init() {
     use gx2::surface::ResourceFlags as Flags;
 
     unsafe extern "C" fn alloc(flags: Flags, size: u32, align: u32) -> *mut c_void {
-        if flags.contains(Flags::ScanBuffer) & !flags.contains(Flags::ForceMem1 | Flags::ForceMem2)
+        if flags.contains(Flags::ScanBuffer) && !flags.contains(Flags::ForceMem1 | Flags::ForceMem2)
         {
             let layout = Layout::from_size_align(size as usize, 0x1000).unwrap();
             log::debug!("GX2 Allocate FG: {:?} {:?}", &layout, flags);
             FG.allocate(layout).unwrap().as_ptr().cast()
         } else if flags.intersects(Flags::ColorBuffer | Flags::DepthBuffer | Flags::ForceMem1)
-            & !flags.contains(Flags::ForceMem2)
+            && !flags.contains(Flags::ForceMem2)
         {
             let layout = Layout::from_size_align(size as usize, align as usize).unwrap();
             log::debug!("GX2 Allocate MEM1: {:?} {:?}", &layout, flags);
@@ -49,18 +49,21 @@ pub fn init() {
             None => return,
         };
 
-        if flags.contains(Flags::ScanBuffer) & !flags.contains(Flags::ForceMem1 | Flags::ForceMem2)
+        if flags.contains(Flags::ScanBuffer) && !flags.contains(Flags::ForceMem1 | Flags::ForceMem2)
         {
+            log::debug!("GX2 Deallocate FG: {:?}", flags);
             unsafe {
                 FG.deallocate(ptr);
             }
-        } else if flags.contains(Flags::ColorBuffer | Flags::DepthBuffer | Flags::ForceMem1)
+        } else if flags.intersects(Flags::ColorBuffer | Flags::DepthBuffer | Flags::ForceMem1)
             & !flags.contains(Flags::ForceMem2)
         {
+            log::debug!("GX2 Deallocate MEM1: {:?}", flags);
             unsafe {
                 MEM1.deallocate(ptr);
             }
         } else {
+            log::debug!("GX2 Deallocate MEM2: {:?}", flags);
             unsafe {
                 MEM2.deallocate(ptr);
             }

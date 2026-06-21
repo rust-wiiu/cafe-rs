@@ -1,10 +1,17 @@
 //! time
 
 use crate::prelude::*;
-use crate::{Error, Result};
 
 use std::{ops, time::Duration};
 use sys::coreinit;
+
+pub struct SystemTimeError(Duration);
+
+impl SystemTimeError {
+    pub fn duration(&self) -> Duration {
+        self.0
+    }
+}
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -87,16 +94,16 @@ impl SystemTime {
         Self(unsafe { coreinit::time::system_uptime() })
     }
 
-    pub fn duration_since(&self, earlier: SystemTime) -> Result<Duration> {
+    pub fn duration_since(&self, earlier: SystemTime) -> Result<Duration, SystemTimeError> {
         if earlier < *self {
             let diff = self.0 - earlier.0;
             Ok(Self(diff).into())
         } else {
-            Err(Error::Any("earlier is later than now"))
+            Err(SystemTimeError(Self(earlier.0 - self.0).into()))
         }
     }
 
-    pub fn elapsed(&self) -> Result<Duration> {
+    pub fn elapsed(&self) -> Result<Duration, SystemTimeError> {
         Self::now().duration_since(*self)
     }
 }

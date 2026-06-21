@@ -79,6 +79,16 @@ impl Surface {
     pub unsafe fn from_raw(s: gx2::surface::Surface) -> Surface {
         Surface { raw: s }
     }
+
+    pub fn invalidate(&self) {
+        unsafe {
+            gx2::surface::invalidate_surface(
+                self.as_raw(),
+                gx2::surface::SurfaceData::Image,
+                gx2::surface::ResourceFlags::empty(),
+            );
+        }
+    }
 }
 
 impl Drop for Surface {
@@ -107,10 +117,10 @@ impl ColorBuffer {
             aa: desc.aa,
             flags: gx2::surface::ResourceFlags::Texture
                 | gx2::surface::ResourceFlags::ColorBuffer
-                | gx2::surface::ResourceFlags::Gpu
-                | gx2::surface::ResourceFlags::Tv,
+                | gx2::surface::ResourceFlags::Gpu,
             ..Default::default()
         });
+        surface.invalidate();
 
         let raw = gx2::surface::ColorBuffer::init(|buf| {
             buf.surface = Surface::into_raw(surface);
@@ -163,6 +173,7 @@ impl DepthBuffer {
                 | gx2::surface::ResourceFlags::Gpu,
             ..Default::default()
         });
+        surface.invalidate();
 
         let raw = gx2::surface::DepthBuffer::init(|buf| {
             buf.surface = Surface::into_raw(surface);

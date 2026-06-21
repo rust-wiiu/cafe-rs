@@ -2,80 +2,8 @@
 
 use crate::prelude::*;
 
-use core::{cell::UnsafeCell, mem::MaybeUninit};
-use std::{
-    ffi::c_void,
-    marker::PhantomData,
-    ptr,
-    sync::atomic::{AtomicBool, AtomicU32, Ordering},
-};
+use std::ffi::c_void;
 use sys::{coreinit, proc_ui};
-
-// static MAIN_CORE: AtomicU32 = AtomicU32::new(0);
-// static RUNNING: AtomicBool = AtomicBool::new(false);
-// // static HOMEBREW_LAUNCHER: AtomicBool = AtomicBool::new(false);
-
-// // PhantomData to impl !Send
-// pub struct Process(PhantomData<*const ()>);
-
-// impl Process {
-//     pub fn new() -> Self {
-//         if RUNNING.swap(true, Ordering::Relaxed) || unsafe { proc_ui::is_running() } != 0 {
-//             panic!("Process::new can only be called once.")
-//         }
-
-//         MAIN_CORE.store(cafe::thread::core().into(), Ordering::Relaxed);
-
-//         unsafe extern "C" fn save_callback(_context: *mut c_void) -> u32 {
-//             unsafe {
-//                 coreinit::foreground::ready_to_release();
-//             }
-
-//             0
-//         }
-
-//         unsafe {
-//             proc_ui::init_ex(save_callback, ptr::null_mut());
-//         }
-
-//         Self(PhantomData)
-//     }
-
-//     pub fn running(&self) -> bool {
-//         let msg = unsafe { proc_ui::process_messages(1) };
-
-//         match msg {
-//             proc_ui::Status::Exit => RUNNING.store(false, Ordering::Release),
-//             proc_ui::Status::Releasing => unsafe { proc_ui::drawing_done() },
-//             _ => (),
-//         }
-
-//         RUNNING.load(Ordering::Acquire)
-//     }
-// }
-
-// impl Drop for Process {
-//     fn drop(&mut self) {
-//         unsafe {
-//             proc_ui::shutdown();
-//         }
-//         RUNNING.store(false, Ordering::Relaxed);
-//     }
-// }
-
-// /// Can be used to check in arbitrary threads if the main thread / process is still running.
-// ///
-// /// This does not handle the system calls to release the foreground. [Process::running] must be called within the main thread for ProcUI to work.
-// #[inline]
-// pub fn running() -> bool {
-//     RUNNING.load(Ordering::Acquire)
-// }
-
-// /// Returns the core the main thread is running on. This is set when [Process::new] is called.
-// #[inline]
-// pub fn main_core() -> u32 {
-//     MAIN_CORE.load(Ordering::Relaxed)
-// }
 
 /// Calling this function multiple times is UB.
 pub fn init<F: FnMut() -> Result<(), ()> + 'static>(mut callback: F) {

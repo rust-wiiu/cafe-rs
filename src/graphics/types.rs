@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use sys::gx2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
@@ -28,4 +29,12 @@ impl From<(u8, u8, u8)> for Color {
             a: 255,
         }
     }
+}
+
+pub trait AttributeFormat {
+    const FORMAT: gx2::shader::AttribFormat;
+}
+
+impl AttributeFormat for [f32; 4] {
+    const FORMAT: gx2::shader::AttribFormat = gx2::shader::AttribFormat::Float32_32_32_32;
 }

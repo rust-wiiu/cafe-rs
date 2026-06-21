@@ -5,6 +5,8 @@ authors = ["29th-Day"]
 edition = "2024"
 license-file = "LICENSE"
 keywords = ["wiiu", "homebrew"]
+description = "Wii U SDK"
+repository = "https://github.com/rust-wiiu/cafe-rs"
 
 [lib]
 test = false
@@ -17,11 +19,11 @@ panic = ["cafe-rt?/panic"]
 alloc = ["cafe-rt?/alloc"]
 
 [dependencies]
-bitflags = "2.10.0"
-bon = { version = "3.8.2", default-features = false }
-cafe-rt = { path = "../cafe-rt", version = "*", optional = true }
-cafe-sys = { path = "../cafe-sys", version = "*" }
+bitflags = "2.13.0"
+bon = { version = "3.9.3", default-features = false }
+cafe-rt = { path = "../cafe-rt", optional = true }
+cafe-sys = { path = "../cafe-sys" }
 gfx2 = "0.4.1"
-log = "0.4.29"
-num_enum = { version = "0.7.5", default-features = false }
+log = "0.4.33"
+num_enum = { version = "0.7.6", default-features = false }
 thiserror = { version = "2.0.18", default-features = false }

@@ -1,8 +1,8 @@
 use crate::prelude::*;
-use std::marker::PhantomData;
+use num_enum::IntoPrimitive;
 use sys::gx2;
 
-use super::buffer::{ShaderProgram, VertexBuffer};
+use super::{buffer::ShaderProgram, types::AttributeFormat};
 
 pub struct VertexShader {
     _data: OwnedVertexData,
@@ -132,7 +132,7 @@ impl From<gfx2::VertexShader> for VertexShader {
                 loop_vars,
                 sampler_vars,
                 attrib_vars,
-                program: ShaderProgram::from(&value.program),
+                program: ShaderProgram::from(value.program),
             }
         };
 
@@ -275,7 +275,7 @@ impl From<gfx2::PixelShader> for PixelShader {
                 initial_values,
                 loop_vars,
                 sampler_vars,
-                program: ShaderProgram::from(&value.program),
+                program: ShaderProgram::from(value.program),
             }
         };
 
@@ -324,7 +324,7 @@ impl FetchShader {
         let shader = gx2::shader::FetchShader::init(|shader| unsafe {
             gx2::shader::init_fetch_shader_ex(
                 shader,
-                program.as_raw().ptr,
+                program.lock().as_mut_ptr().cast(),
                 attribs.len() as u32,
                 attribs.as_ptr(),
                 gx2::shader::FetchShaderType::None,
@@ -332,7 +332,13 @@ impl FetchShader {
             );
         });
 
-        // invalidate
+        // unsafe {
+        //     gx2::mem::invalidate(
+        //         gx2::mem::Invalidate::Shader | gx2::mem::Invalidate::Cpu,
+        //         shader.program.cast_mut(),
+        //         size as u32,
+        //     );
+        // }
 
         Self {
             _data: program,
@@ -345,145 +351,78 @@ impl FetchShader {
     }
 }
 
-pub trait FormatList {
-    type Streams: AsRef<[gx2::shader::AttribStream]>;
-}
-
-pub trait AttributeList {
-    type Formats: FormatList;
-    fn into_streams(self) -> <Self::Formats as FormatList>::Streams;
-}
-
-pub trait BufferList {
-    type Formats: FormatList;
-    type Bindings: IntoIterator<Item = (*const sys::gx2::mem::Buffer, AttributeBinding)>;
-
-    fn bindings(&self, streams: &<Self::Formats as FormatList>::Streams) -> Self::Bindings;
-}
-
-pub struct AttributeBinding {
-    pub slot: u32,
-    pub stride: u32,
-    pub offset: u32,
-}
-
-pub struct ShaderGroup<Formats: FormatList> {
+pub struct ShaderGroup<A> {
     pub(crate) vertex: VertexShader,
     pub(crate) pixel: PixelShader,
     pub(crate) fetch: FetchShader,
-    pub(crate) attributes: Formats::Streams,
+    pub attrs: A,
 }
 
-impl<Formats: FormatList> ShaderGroup<Formats> {
-    pub fn new<A: AttributeList<Formats = Formats>>(
+#[repr(u32)]
+#[derive(Debug, IntoPrimitive)]
+pub enum Stream {
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    S8,
+    S9,
+    S10,
+    S11,
+    S12,
+    S13,
+    S14,
+    S15,
+}
+
+#[repr(transparent)]
+pub struct Attribute(pub(crate) gx2::shader::AttribStream);
+
+impl Attribute {
+    pub const fn new<T: AttributeFormat>(location: usize, stream: Stream) -> Self {
+        Self(gx2::shader::AttribStream {
+            location: location as u32,
+            buffer: stream as u32,
+            offset: 0,
+            format: T::FORMAT,
+            index_type: gx2::shader::AttribIndexType::PerVertex,
+            alu_divisor: 0,
+            mask: gx2::shader::ComponentSelection::default_for(T::FORMAT),
+            endian_swap: gx2::shader::EndianSwapMode::Default,
+        })
+    }
+
+    pub const fn offset(mut self, offset: usize) -> Self {
+        self.0.offset = offset as u32;
+        self
+    }
+
+    // add missing methods
+}
+
+impl<A: AsRef<[Attribute]>> ShaderGroup<A> {
+    pub fn new(
         vertex: impl Into<VertexShader>,
         pixel: impl Into<PixelShader>,
         attributes: A,
     ) -> Self {
-        let attributes = attributes.into_streams();
-
-        let fetch = FetchShader::new(attributes.as_ref());
-
         Self {
             vertex: vertex.into(),
             pixel: pixel.into(),
-            fetch,
-            attributes,
+            fetch: FetchShader::new(
+                // SAFETY: Attribute is transparent to gx2::shader::AttribStream
+                unsafe {
+                    std::slice::from_raw_parts(
+                        attributes.as_ref().as_ptr() as *const gx2::shader::AttribStream,
+                        attributes.as_ref().len(),
+                    )
+                },
+            ),
+            attrs: attributes,
         }
-    }
-
-    pub fn foo<B: BufferList<Formats = Formats>>(&self, _buffers: B) {
-        todo!()
-    }
-}
-
-macro_rules! impl_format_lists {
-    ($N:literal, $(($Ti:ident, $i:tt)),+) => {
-        impl<$($Ti: AttributeFormat),+> FormatList for ($($Ti,)+) {
-            type Streams = [gx2::shader::AttribStream; $N];
-        }
-
-        impl<$($Ti: AttributeFormat),+> AttributeList for ($(Attribute<$Ti>,)+) {
-            type Formats = ($($Ti,)+);
-
-            fn into_streams(self) -> [gx2::shader::AttribStream; $N] {
-                [$(self.$i.0),+]
-            }
-        }
-
-        impl<'a, $($Ti: AttributeFormat),+> BufferList for ($(&'a VertexBuffer<$Ti>,)+) {
-            type Formats = ($($Ti,)+);
-            type Bindings = [(*const sys::gx2::mem::Buffer, AttributeBinding); $N];
-
-            fn bindings(&self, streams: &[gx2::shader::AttribStream; $N]) -> Self::Bindings {
-                [
-                    $(
-                        (
-                            self.$i.as_raw(),
-                            AttributeBinding {
-                                slot: streams[$i].location,
-                                stride: std::mem::size_of::<$Ti>() as u32,
-                                offset: streams[$i].offset,
-                            }
-                        )
-                    ),+
-                ]
-            }
-        }
-    }
-}
-
-impl_format_lists!(1, (T0, 0));
-impl_format_lists!(2, (T0, 0), (T1, 1));
-impl_format_lists!(3, (T0, 0), (T1, 1), (T2, 2));
-impl_format_lists!(4, (T0, 0), (T1, 1), (T2, 2), (T3, 3));
-// …
-
-pub trait AttributeFormat {
-    const FORMAT: gx2::shader::AttribFormat;
-}
-
-impl AttributeFormat for (f32, f32) {
-    const FORMAT: gx2::shader::AttribFormat = gx2::shader::AttribFormat::Float32_32;
-}
-
-impl AttributeFormat for (f32, f32, f32) {
-    const FORMAT: gx2::shader::AttribFormat = gx2::shader::AttribFormat::Float32_32_32;
-}
-
-impl AttributeFormat for (f32, f32, f32, f32) {
-    const FORMAT: gx2::shader::AttribFormat = gx2::shader::AttribFormat::Float32_32_32_32;
-}
-
-impl AttributeFormat for [f32; 4] {
-    const FORMAT: gx2::shader::AttribFormat = gx2::shader::AttribFormat::Float32_32_32_32;
-}
-
-impl AttributeFormat for u32 {
-    const FORMAT: gx2::shader::AttribFormat = gx2::shader::AttribFormat::Uint32;
-}
-
-pub struct Attribute<T>(gx2::shader::AttribStream, PhantomData<T>);
-
-impl<T: AttributeFormat> Attribute<T> {
-    pub fn location(location: usize) -> Self {
-        Self(
-            gx2::shader::AttribStream {
-                location: location as u32,
-                buffer: location as u32,
-                offset: 0,
-                format: T::FORMAT,
-                index_type: gx2::shader::AttribIndexType::PerVertex,
-                alu_divisor: 0,
-                mask: gx2::shader::ComponentSelection::from(T::FORMAT),
-                endian_swap: gx2::shader::EndianSwapMode::Default,
-            },
-            PhantomData,
-        )
-    }
-
-    pub fn offset(mut self, offset: usize) -> Self {
-        self.0.offset = offset as u32;
-        self
     }
 }

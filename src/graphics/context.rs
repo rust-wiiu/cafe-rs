@@ -18,7 +18,7 @@ impl<T: RenderTarget> Context<T> {
     pub fn new() -> Self {
         Self {
             ctx: Box::new(gx2::state::Context::init(|ctx| unsafe {
-                gx2::state::init_context(ctx, 0);
+                gx2::state::init_context(ctx, 1);
             })),
             _marker: PhantomData,
         }

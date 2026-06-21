@@ -339,7 +339,7 @@ impl TryFrom<wpad::Channel> for Port {
             wpad::Channel::C4 => Ok(Port::P4),
             wpad::Channel::C5 => Ok(Port::P5),
             wpad::Channel::C6 => Ok(Port::P6),
-            _ => Err(value),
+            // _ => Err(value),
         }
     }
 }

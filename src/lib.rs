@@ -21,27 +21,6 @@ pub mod io;
 pub mod mem;
 pub mod net;
 pub mod process;
-pub mod rrc;
 pub mod sync;
 pub mod thread;
 pub mod time;
-
-/// What to do when an allocation fails?
-///
-/// Use this for now to unify OOM behavior.
-macro_rules! OOM {
-    () => {
-        panic!("Out of memory!");
-    };
-}
-pub(crate) use OOM;
-
-// ==== ONLY DURING DEV STAGES ====
-
-#[derive(Debug, Clone)]
-pub enum Error {
-    Any(&'static str),
-    Integer(i32),
-}
-
-pub type Result<T> = core::result::Result<T, Error>;

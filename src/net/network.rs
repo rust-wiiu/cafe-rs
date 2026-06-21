@@ -1,58 +1,39 @@
 //! network
 
-use crate::rrc::{Resource, Rrc};
-use crate::sys::nn::ac;
-use crate::{Error, Result};
+use crate::prelude::*;
+use sys::nn::ac;
 
-static AC: Rrc = Rrc::new(
-    || unsafe {
-        match ac::init() {
-            ac::AcStatus::Failed => panic!("auto connect could not initialize"),
-            ac::AcStatus::Processing => (),
-            ac::AcStatus::Ok => (),
-        }
-    },
-    || unsafe { ac::deinit() },
-);
-
-pub struct Network {
-    _resource: Resource,
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Auto connect could not be initialized")]
+    Initialization,
+    #[error("Cannot connect to auto-configured network")]
+    NetworkConnect,
+    #[error("Cannot disconnect from network")]
+    NetworkDisconnect,
 }
 
-impl Default for Network {
-    fn default() -> Self {
-        Network {
-            _resource: AC.acquire(),
-        }
+pub fn init() -> Result<(), Error> {
+    match unsafe { ac::init() } {
+        ac::AcStatus::Failed => Err(Error::Initialization),
+        ac::AcStatus::Processing | ac::AcStatus::Ok => Ok(()),
     }
 }
 
-impl Network {
-    pub fn connect(&self) -> Result<()> {
-        match unsafe { ac::connect() } {
-            ac::AcStatus::Failed => Err(Error::Any("cannot connect to network")),
-            ac::AcStatus::Ok => Ok(()),
-            // cannot happen in non-async mode
-            ac::AcStatus::Processing => Ok(()),
-        }
-    }
+pub fn deinit() {
+    unsafe { ac::deinit() }
+}
 
-    fn _disconnect(&self) -> Result<()> {
-        match unsafe { ac::close() } {
-            ac::AcStatus::Failed => Err(Error::Any("cannot disconnect from network")),
-            ac::AcStatus::Ok => Ok(()),
-            // cannot happen in non-async mode
-            ac::AcStatus::Processing => Ok(()),
-        }
-    }
-
-    pub fn disconnect(self) -> Result<()> {
-        self._disconnect()
+pub fn connect() -> Result<(), Error> {
+    match unsafe { ac::connect() } {
+        ac::AcStatus::Failed => Err(Error::NetworkConnect),
+        ac::AcStatus::Processing | ac::AcStatus::Ok => Ok(()),
     }
 }
 
-impl Drop for Network {
-    fn drop(&mut self) {
-        let _ = self._disconnect();
+pub fn disconnect() -> Result<(), Error> {
+    match unsafe { ac::close() } {
+        ac::AcStatus::Failed => Err(Error::NetworkDisconnect),
+        ac::AcStatus::Processing | ac::AcStatus::Ok => Ok(()),
     }
 }

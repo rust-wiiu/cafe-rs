@@ -2,25 +2,39 @@
 
 use crate::prelude::*;
 
-use cafe::rrc::{Resource, Rrc};
 use std::{io, mem::size_of_val, net::SocketAddrV4};
 use sys::nsys::net::socket;
 
-static SOCKET: Rrc = Rrc::new(
-    || unsafe {
-        let _ = socket::init();
-    },
-    || unsafe {
-        let _ = socket::deinit();
-    },
-);
+// static SOCKET: Rrc = Rrc::new(
+//     || unsafe {
+//         let _ = socket::init();
+//     },
+//     || unsafe {
+//         let _ = socket::deinit();
+//     },
+// );
 
 pub use socket::{Flags, Level, Options, Protocol, Shutdown};
+
+pub type Error = socket::Error;
+
+pub fn init() -> Result<(), Error> {
+    match unsafe { socket::init() } {
+        0 => Ok(()),
+        v => Err(Error::try_from(v).unwrap()),
+    }
+}
+
+pub fn deinit() -> Result<(), Error> {
+    match unsafe { socket::deinit() } {
+        0 => Ok(()),
+        v => Err(Error::try_from(v).unwrap()),
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Socket {
     fd: socket::FileDescriptor,
-    _resource: Resource,
 }
 
 impl Socket {
@@ -34,8 +48,6 @@ impl Socket {
 
     #[inline]
     pub fn tcp() -> io::Result<Self> {
-        let _resource = SOCKET.acquire();
-
         let fd = unsafe {
             socket::socket(
                 socket::Family::IPv4,
@@ -49,14 +61,12 @@ impl Socket {
                 .expect("Error does not reflect failed operation")
                 .into())
         } else {
-            Ok(Self { fd, _resource })
+            Ok(Self { fd })
         }
     }
 
     #[inline]
     pub fn udp() -> io::Result<Self> {
-        let _resource = SOCKET.acquire();
-
         let fd = unsafe {
             socket::socket(
                 socket::Family::IPv4,
@@ -70,7 +80,7 @@ impl Socket {
                 .expect("Error does not reflect failed operation")
                 .into())
         } else {
-            Ok(Self { fd, _resource })
+            Ok(Self { fd })
         }
     }
 
@@ -135,10 +145,7 @@ impl Socket {
             let addr = unsafe { addr.assume_init() };
 
             Ok((
-                Self {
-                    fd: socket,
-                    _resource: self._resource.clone(),
-                },
+                Self { fd: socket },
                 SocketAddrV4::new(addr.address.into(), addr.port),
             ))
         }

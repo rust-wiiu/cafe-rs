@@ -97,11 +97,16 @@ impl Display<TV> {
         };
         debug_assert_ne!(size, 0);
 
+        unsafe {
+            gx2::display::enable_tv(true);
+        }
+
         let scan = ScanBuffer::with_capacity(size as usize);
+        scan.invalidate();
 
         unsafe {
             gx2::display::set_tv_buffer(
-                scan.as_raw().ptr,
+                scan.lock().as_mut_ptr().cast(),
                 scan.len() as u32,
                 TV::mode(),
                 TV::SCAN_FORMAT,
@@ -131,11 +136,16 @@ impl Display<DRC> {
         };
         debug_assert_ne!(size, 0);
 
+        unsafe {
+            gx2::display::enable_drc(true);
+        }
+
         let scan = ScanBuffer::with_capacity(size as usize);
+        scan.invalidate();
 
         unsafe {
             gx2::display::set_drc_buffer(
-                scan.as_raw().ptr,
+                scan.lock().as_mut_ptr().cast(),
                 scan.len() as u32,
                 DRC::mode(),
                 DRC::SCAN_FORMAT,

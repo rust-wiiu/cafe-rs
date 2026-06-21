@@ -2,9 +2,10 @@ use crate::prelude::*;
 use sys::gx2;
 
 use super::{
+    buffer::VertexBuffer,
     context::Context,
     display::RenderTarget,
-    shader::{BufferList, FormatList, ShaderGroup},
+    shader::{Attribute, ShaderGroup},
     target::Target,
     types::Color,
 };
@@ -30,21 +31,22 @@ impl<T: RenderTarget> DirectPipeline<'_, T> {
         }
     }
 
-    pub fn use_shader_group<F, B>(&mut self, group: &ShaderGroup<F>, buffers: B)
-    where
-        F: FormatList,
-        B: BufferList<Formats = F>,
-    {
+    pub fn use_shader_group<A>(&mut self, group: &ShaderGroup<A>) {
         unsafe {
             gx2::shader::set_fetch_shader(group.fetch.as_raw());
             gx2::shader::set_vertex_shader(group.vertex.as_raw());
             gx2::shader::set_pixel_shader(group.pixel.as_raw());
         }
+    }
 
-        for (buffer, attr) in buffers.bindings(&group.attributes) {
-            unsafe {
-                gx2::shader::set_attribute_buffer(buffer, attr.slot, attr.stride, attr.offset);
-            }
+    pub fn set_attribute_stream<B>(&mut self, attr: &Attribute, buffer: &VertexBuffer<B>) {
+        unsafe {
+            gx2::shader::set_attribute_buffer(
+                buffer.as_raw(),
+                attr.0.buffer,
+                size_of::<B>() as u32,
+                attr.0.offset,
+            );
         }
     }
 
