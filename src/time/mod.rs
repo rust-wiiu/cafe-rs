@@ -5,6 +5,7 @@ use crate::prelude::*;
 use std::{ops, time::Duration};
 use sys::coreinit;
 
+#[derive(Debug, Clone, Copy)]
 pub struct SystemTimeError(Duration);
 
 impl SystemTimeError {

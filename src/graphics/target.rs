@@ -1,14 +1,16 @@
+use cafe_sys::gx2;
+
 use crate::prelude::*;
 use std::marker::PhantomData;
 
 use super::{
     display::{DRC, RenderTarget, TV},
-    surface::{ColorBuffer, ColorBufferDescriptor, DepthBuffer, DepthBufferDescriptor},
+    texture::{ColorBuffer, DepthBuffer, RenderBufferDescriptor},
 };
 
 pub struct Target<T: RenderTarget> {
-    pub(crate) color: ColorBuffer,
-    pub(crate) depth: DepthBuffer,
+    pub color: ColorBuffer,
+    pub depth: DepthBuffer,
     _marker: PhantomData<T>,
 }
 
@@ -17,19 +19,25 @@ impl<T: RenderTarget> Target<T> {
         let (width, height) = T::size();
 
         Self {
-            color: ColorBuffer::new(&ColorBufferDescriptor {
+            color: ColorBuffer::new(&RenderBufferDescriptor {
                 width,
                 height,
-                format: T::COLOR_FORMAT,
                 aa: T::AA,
+                tile_mode: gx2::mem::TileMode::LinearAligned,
             }),
-            depth: DepthBuffer::new(&DepthBufferDescriptor {
+            depth: DepthBuffer::new(&RenderBufferDescriptor {
                 width,
                 height,
-                format: T::DEPTH_FORMAT,
                 aa: T::AA,
+                tile_mode: gx2::mem::TileMode::Default,
             }),
             _marker: PhantomData,
+        }
+    }
+
+    pub fn copy_to_framebuffer(&self) {
+        unsafe {
+            gx2::display::copy_color_to_scan_buffer(self.color.as_raw(), T::SCAN_TARGET);
         }
     }
 }

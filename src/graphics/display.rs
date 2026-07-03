@@ -7,11 +7,9 @@ use super::buffer::ScanBuffer;
 
 pub trait RenderTarget {
     type Mode;
-    const COLOR_FORMAT: gx2::surface::Format;
-    const DEPTH_FORMAT: gx2::surface::Format;
-    const SCAN_FORMAT: gx2::surface::Format;
+    const SCAN_FORMAT: gx2::mem::Format;
     const BUFFERING: gx2::display::Buffering;
-    const AA: gx2::surface::AntiAliasing;
+    const AA: gx2::mem::AntiAliasing;
     const SCAN_TARGET: gx2::display::ScanTarget;
 
     fn size() -> (usize, usize);
@@ -21,12 +19,10 @@ pub trait RenderTarget {
 pub struct TV;
 impl RenderTarget for TV {
     type Mode = gx2::display::TvMode;
-    const COLOR_FORMAT: gx2::surface::Format = gx2::surface::Format::UnormR8G8B8A8;
-    const DEPTH_FORMAT: gx2::surface::Format = gx2::surface::Format::FloatR32;
-    const SCAN_FORMAT: gx2::surface::Format = gx2::surface::Format::UnormR8G8B8A8;
+    const SCAN_FORMAT: gx2::mem::Format = gx2::mem::Format::UnormR8G8B8A8;
 
     const BUFFERING: gx2::display::Buffering = gx2::display::Buffering::Double;
-    const AA: gx2::surface::AntiAliasing = gx2::surface::AntiAliasing::X1;
+    const AA: gx2::mem::AntiAliasing = gx2::mem::AntiAliasing::X1;
     const SCAN_TARGET: gx2::display::ScanTarget = gx2::display::ScanTarget::Tv;
 
     fn size() -> (usize, usize) {
@@ -58,12 +54,10 @@ impl RenderTarget for TV {
 pub struct DRC;
 impl RenderTarget for DRC {
     type Mode = gx2::display::DrcMode;
-    const COLOR_FORMAT: gx2::surface::Format = gx2::surface::Format::UnormR8G8B8A8;
-    const DEPTH_FORMAT: gx2::surface::Format = gx2::surface::Format::FloatR32;
-    const SCAN_FORMAT: gx2::surface::Format = gx2::surface::Format::UnormR8G8B8A8;
+    const SCAN_FORMAT: gx2::mem::Format = gx2::mem::Format::UnormR8G8B8A8;
 
     const BUFFERING: gx2::display::Buffering = gx2::display::Buffering::Double;
-    const AA: gx2::surface::AntiAliasing = gx2::surface::AntiAliasing::X1;
+    const AA: gx2::mem::AntiAliasing = gx2::mem::AntiAliasing::X1;
     const SCAN_TARGET: gx2::display::ScanTarget = gx2::display::ScanTarget::Drc;
 
     #[inline]
@@ -78,7 +72,7 @@ impl RenderTarget for DRC {
 }
 
 pub struct Display<T: RenderTarget> {
-    _scan: ScanBuffer,
+    pub scan: ScanBuffer,
     _marker: PhantomData<T>,
 }
 
@@ -95,19 +89,18 @@ impl Display<TV> {
                 &mut scale_needed,
             );
         };
-        debug_assert_ne!(size, 0);
+        assert_ne!(size, 0);
 
         unsafe {
             gx2::display::enable_tv(true);
         }
 
         let scan = ScanBuffer::with_capacity(size as usize);
-        scan.invalidate();
 
         unsafe {
             gx2::display::set_tv_buffer(
-                scan.lock().as_mut_ptr().cast(),
-                scan.len() as u32,
+                scan.as_raw().ptr,
+                size,
                 TV::mode(),
                 TV::SCAN_FORMAT,
                 TV::BUFFERING,
@@ -115,7 +108,7 @@ impl Display<TV> {
         }
 
         Self {
-            _scan: scan,
+            scan,
             _marker: PhantomData,
         }
     }
@@ -134,19 +127,18 @@ impl Display<DRC> {
                 &mut scale_needed,
             );
         };
-        debug_assert_ne!(size, 0);
+        assert_ne!(size, 0);
 
         unsafe {
             gx2::display::enable_drc(true);
         }
 
         let scan = ScanBuffer::with_capacity(size as usize);
-        scan.invalidate();
 
         unsafe {
             gx2::display::set_drc_buffer(
-                scan.lock().as_mut_ptr().cast(),
-                scan.len() as u32,
+                scan.as_raw().ptr,
+                size,
                 DRC::mode(),
                 DRC::SCAN_FORMAT,
                 DRC::BUFFERING,
@@ -154,7 +146,7 @@ impl Display<DRC> {
         }
 
         Self {
-            _scan: scan,
+            scan,
             _marker: PhantomData,
         }
     }

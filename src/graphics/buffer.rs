@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use gx2::mem::ResourceFlags;
 use std::{marker::PhantomData, mem::ManuallyDrop, ptr};
 use sys::gx2;
 
@@ -27,17 +28,17 @@ impl<U: Usage, T> Buffer<U, T> {
     }
 }
 
-impl<U: Usage, T> From<Vec<T>> for Buffer<U, T> {
+impl<U: Usage, T: Copy> From<Vec<T>> for Buffer<U, T> {
     fn from(mut value: Vec<T>) -> Self {
-        let buffer = Self::with_capacity(value.len());
+        let mut buffer = Self::with_capacity(value.len());
         buffer.lock().swap_with_slice(value.as_mut());
         buffer
     }
 }
 
-impl<U: Usage, T, const N: usize> From<[T; N]> for Buffer<U, T> {
+impl<U: Usage, T: Copy, const N: usize> From<[T; N]> for Buffer<U, T> {
     fn from(mut value: [T; N]) -> Self {
-        let buffer = Self::with_capacity(N);
+        let mut buffer = Self::with_capacity(N);
         buffer.lock().swap_with_slice(value.as_mut());
         buffer
     }
@@ -45,7 +46,7 @@ impl<U: Usage, T, const N: usize> From<[T; N]> for Buffer<U, T> {
 
 impl<U: Usage, T: Copy> From<&[T]> for Buffer<U, T> {
     fn from(value: &[T]) -> Self {
-        let buffer = Self::with_capacity(value.len());
+        let mut buffer = Self::with_capacity(value.len());
         buffer.lock().copy_from_slice(value);
         buffer
     }
@@ -76,13 +77,13 @@ impl<U, T> Buffer<U, T> {
         }
     }
 
-    pub fn lock(&self) -> BufferLock<'_, U, T> {
+    pub fn lock(&mut self) -> BufferLock<'_, U, T> {
         BufferLock::new(self)
     }
 
     pub fn invalidate(&self) {
         unsafe {
-            gx2::mem::invalidate_buffer(self.as_raw(), gx2::surface::ResourceFlags::empty());
+            gx2::mem::invalidate_buffer(self.as_raw(), ResourceFlags::empty());
         }
     }
 }
@@ -90,21 +91,19 @@ impl<U, T> Buffer<U, T> {
 impl<U, T> Drop for Buffer<U, T> {
     fn drop(&mut self) {
         unsafe {
-            gx2::mem::destroy_buffer(&mut self.raw, gx2::surface::ResourceFlags::empty());
+            gx2::mem::destroy_buffer(&mut self.raw, ResourceFlags::empty());
         }
     }
 }
 
 pub struct BufferLock<'a, U, T> {
-    buffer: &'a Buffer<U, T>,
+    buffer: &'a mut Buffer<U, T>,
     data: &'a mut [T],
 }
 
 impl<'a, U, T> BufferLock<'a, U, T> {
-    pub fn new(buffer: &'a Buffer<U, T>) -> Self {
-        let ptr = unsafe {
-            gx2::mem::lock_buffer_ex(buffer.as_raw(), gx2::surface::ResourceFlags::empty())
-        };
+    pub fn new(buffer: &'a mut Buffer<U, T>) -> Self {
+        let ptr = unsafe { gx2::mem::lock_buffer_ex(buffer.as_raw(), ResourceFlags::empty()) };
 
         let data = unsafe { std::slice::from_raw_parts_mut(ptr as *mut T, buffer.len()) };
 
@@ -115,7 +114,7 @@ impl<'a, U, T> BufferLock<'a, U, T> {
 impl<U, T> Drop for BufferLock<'_, U, T> {
     fn drop(&mut self) {
         unsafe {
-            gx2::mem::unlock_buffer_ex(self.buffer.as_raw(), gx2::surface::ResourceFlags::empty());
+            gx2::mem::unlock_buffer_ex(self.buffer.as_raw(), ResourceFlags::empty());
         }
     }
 }
@@ -141,28 +140,29 @@ impl<U, T: Debug> std::fmt::Debug for BufferLock<'_, U, T> {
 }
 
 pub trait Usage {
-    const FLAGS: gx2::surface::ResourceFlags;
+    const FLAGS: ResourceFlags;
 }
 
 pub struct Shader;
 impl Usage for Shader {
-    const FLAGS: gx2::surface::ResourceFlags = gx2::surface::ResourceFlags::ShaderProgram
-        .union(gx2::surface::ResourceFlags::GpuRead)
-        .union(gx2::surface::ResourceFlags::Cpu);
+    const FLAGS: ResourceFlags = ResourceFlags::ShaderProgram
+        .union(ResourceFlags::GpuRead)
+        .union(ResourceFlags::Cpu);
 }
 pub type ShaderProgram = Buffer<Shader, u8>;
 
 pub struct Vertex;
 impl Usage for Vertex {
-    const FLAGS: gx2::surface::ResourceFlags = gx2::surface::ResourceFlags::VertexBuffer
-        .union(gx2::surface::ResourceFlags::GpuRead)
-        .union(gx2::surface::ResourceFlags::Cpu);
+    const FLAGS: ResourceFlags = ResourceFlags::VertexBuffer
+        .union(ResourceFlags::GpuRead)
+        .union(ResourceFlags::Cpu);
 }
 pub type VertexBuffer<T> = Buffer<Vertex, T>;
 
 pub struct Scan;
 impl Usage for Scan {
-    const FLAGS: gx2::surface::ResourceFlags =
-        gx2::surface::ResourceFlags::ScanBuffer.union(gx2::surface::ResourceFlags::Gpu);
+    const FLAGS: ResourceFlags = ResourceFlags::ScanBuffer
+        .union(ResourceFlags::Gpu)
+        .union(ResourceFlags::Cpu);
 }
 pub type ScanBuffer = Buffer<Scan, u8>;

@@ -219,9 +219,9 @@ dependencies = [
 
 [[package]]
 name = "gfx2"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28428b4bc5997e193c3a8d65aa7c86a135e7aa142a2db1ed9bba76ec8683e1e2"
+checksum = "a84029d2d2c2ce272c356db52afe505aebb749ee5616dd752ed8bf78ad503412"
 dependencies = [
  "binrw",
  "bitflags",

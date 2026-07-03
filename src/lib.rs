@@ -15,6 +15,7 @@ pub mod std;
 
 pub mod alloc;
 pub mod datetime;
+pub mod font;
 pub mod gamepad;
 pub mod graphics;
 pub mod io;

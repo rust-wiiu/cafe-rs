@@ -16,11 +16,23 @@ pub struct Context<T: RenderTarget> {
 
 impl<T: RenderTarget> Context<T> {
     pub fn new() -> Self {
-        Self {
+        let ctx = Self {
             ctx: Box::new(gx2::state::Context::init(|ctx| unsafe {
                 gx2::state::init_context(ctx, 1);
             })),
             _marker: PhantomData,
+        };
+        ctx.invalidate();
+        ctx
+    }
+
+    pub fn invalidate(&self) {
+        unsafe {
+            gx2::mem::invalidate(
+                gx2::mem::Invalidate::Cpu,
+                self.ctx.as_ref() as *const _ as *mut _,
+                size_of::<gx2::state::Context>() as u32,
+            );
         }
     }
 
@@ -51,9 +63,7 @@ impl<T: RenderTarget> Context<T> {
         let mut pipeline = DirectPipeline { ctx: self, target };
         f(&mut pipeline);
 
-        unsafe {
-            gx2::display::copy_color_to_scan_buffer(target.color.as_raw(), T::SCAN_TARGET);
-        }
+        target.copy_to_framebuffer();
     }
 
     pub fn as_raw(&self) -> &gx2::state::Context {

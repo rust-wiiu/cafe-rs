@@ -319,7 +319,7 @@ impl FetchShader {
             )
         };
 
-        let program = ShaderProgram::with_capacity(size as usize);
+        let mut program = ShaderProgram::with_capacity(size as usize);
 
         let shader = gx2::shader::FetchShader::init(|shader| unsafe {
             gx2::shader::init_fetch_shader_ex(

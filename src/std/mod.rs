@@ -26,6 +26,7 @@ pub use alloc_crate::alloc;
 pub use alloc_crate::borrow;
 pub use alloc_crate::boxed;
 pub use alloc_crate::format;
+pub use alloc_crate::rc;
 pub use alloc_crate::slice;
 pub use alloc_crate::str;
 pub use alloc_crate::string;

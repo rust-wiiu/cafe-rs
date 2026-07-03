@@ -27,6 +27,10 @@ impl<T: RenderTarget> DirectPipeline<'_, T> {
                 self.target.depth.as_raw().clear_stencil as u8,
                 gx2::display::ClearMode::Both,
             );
+
+            // Flush shadow state to physical memory so the display list's LOAD_CTX_REG reads current values (e.g. CB_COLOR0_BASE set by GX2SetColorBuffer above).
+            self.ctx.invalidate();
+
             gx2::state::set_context(self.ctx.as_raw());
         }
     }
